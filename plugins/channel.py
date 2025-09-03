@@ -7,7 +7,7 @@ from datetime import datetime
 from collections import defaultdict
 from io import BytesIO
 from PIL import Image
-from duckduckgo_search import DDGS
+from ddgs import DDGS  # Use the new package name
 
 from plugins.Dreamxfutures.Imdbposter import get_movie_detailsx, fetch_image, get_movie_details
 from database.users_chats_db import db
@@ -38,7 +38,7 @@ IGNORE_WORDS = {
     "mar", "marathi", "guj", "gujarati", "urd", "urdu", "kor", "korean", "jpn", 
     "japanese", "nf", "netflix", "sonyliv", "sony", "sliv", "amzn", "prime", 
     "primevideo", "hotstar", "zee5", "jio", "jhs", "aha", "hbo", "paramount", 
-    "apple", "hoichoi", "sunnxt", "viki"
+    "apple", "hoichoi", "sunnxt", "viki", "[@FilmyHub4u_Official]", "@shettyMoviez2 ~"
 }|BAD_WORDS
 
 # Constants
