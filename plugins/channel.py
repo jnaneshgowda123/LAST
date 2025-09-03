@@ -7,7 +7,7 @@ from datetime import datetime
 from collections import defaultdict
 from io import BytesIO
 from PIL import Image
-from ddgs import DDGS  # Use the new package name
+from ddgs import DDGS
 
 from plugins.Dreamxfutures.Imdbposter import get_movie_detailsx, fetch_image, get_movie_details
 from database.users_chats_db import db
@@ -102,7 +102,7 @@ def search_posters(query, max_results=3):
         import random
 
         # Add random delay to avoid rate limiting
-        time.sleep(random.uniform(1, 3))
+        time.sleep(random.uniform(3, 6))  # Increased delay
 
         with DDGS() as ddgs:
             # Try different search variations if first fails
@@ -116,13 +116,14 @@ def search_posters(query, max_results=3):
             for search_term in search_terms:
                 try:
                     print(f"[INFO] Trying search term: {search_term}")
-                    results = ddgs.images(search_term, max_results=max_results*2)
+                    results = ddgs.images(search_term, max_results=max_results*2, safesearch="off")
 
                     for res in results:
                         if res.get("image"):
                             # Filter for likely poster images
                             img_url = res["image"]
-                            if any(keyword in img_url.lower() for keyword in ["poster", "jpg", "jpeg", "png"]):
+                            # More lenient filtering
+                            if any(keyword in img_url.lower() for keyword in ["poster", "jpg", "jpeg", "png", "webp"]):
                                 posters.append(img_url)
                                 print(f"[DEBUG] Poster found: {img_url}")
                             if len(posters) >= max_results:
@@ -131,11 +132,13 @@ def search_posters(query, max_results=3):
                     if len(posters) >= max_results:
                         break
 
-                    # Small delay between different search terms
-                    time.sleep(1)
+                    # Longer delay between different search terms
+                    time.sleep(2)  # Increased delay
 
                 except Exception as search_error:
                     print(f"[WARNING] Search term '{search_term}' failed: {search_error}")
+                    # Longer delay on error
+                    time.sleep(5)
                     continue
 
     except Exception as e:
@@ -158,32 +161,89 @@ def download_image(url):
         print(f"[ERROR] Download error for {url}: {e}")
     return None
 
-def upscale_to_4k(image_bytes, save_path):
+def resize_to_1440p(image_bytes, save_path):
     try:
         img = Image.open(BytesIO(image_bytes)).convert("RGB")
-        img = img.resize((3840, 2160), Image.LANCZOS)
-        img.save(save_path, format="JPEG", quality=95)
+        # Resize to 2560x1440 (1440p) while maintaining aspect ratio
+        img.thumbnail((2560, 1440), Image.LANCZOS)
+        
+        # Create a new image with the target size and paste the resized image
+        new_img = Image.new("RGB", (2560, 1440), (0, 0, 0))
+        img_width, img_height = img.size
+        offset = ((2560 - img_width) // 2, (1440 - img_height) // 2)
+        new_img.paste(img, offset)
+        
+        new_img.save(save_path, format="JPEG", quality=95, optimize=True)
         return True
     except Exception as e:
-        print("Upscale error:", e)
+        print(f"Resize error: {e}")
         return False
 
+async def get_fallback_poster(bot, movie_name):
+    """Fallback to IMDB/TMDB if DuckDuckGo fails"""
+    try:
+        if TMDB_POSTER:
+            details = await get_movie_detailsx(movie_name)
+            if not details.get("error"):
+                return details.get("backdrop_url") if LANDSCAPE_POSTER else details.get("poster_url")
+        
+        # Fallback to IMDB
+        details = await get_movie_details(movie_name) or {}
+        return details.get("poster_url")
+    except Exception as e:
+        logger.error(f"Fallback poster error: {e}")
+        return None
+
 async def search_and_upload_poster(bot, movie_name):
-    """Search for a poster and upload it to Telegram"""
+    """Search for a poster and upload it to Telegram in 2560x1440 resolution"""
     try:
         # Search for posters
         posters = search_posters(movie_name)
+        
+        # If no posters found, use fallback
         if not posters:
+            fallback_url = await get_fallback_poster(bot, movie_name)
+            if fallback_url:
+                # Download from fallback URL
+                img_data = download_image(fallback_url)
+                if img_data:
+                    # Save temporarily
+                    filename = f"temp_poster_{movie_name.replace(' ', '_')}.jpg"
+                    if resize_to_1440p(img_data, filename):
+                        # Upload to Telegram and get file_id
+                        with open(filename, 'rb') as f:
+                            msg = await bot.send_photo(
+                                chat_id=MOVIE_UPDATE_CHANNEL,
+                                photo=f,
+                                caption=f"Poster for {movie_name}"
+                            )
+                        
+                        # Get file_id for future use
+                        poster_file_id = msg.photo.file_id if msg.photo else None
+                        
+                        # Clean up
+                        os.remove(filename)
+                        
+                        return poster_file_id
             return None
             
-        # Download and upscale the first poster
+        # Download and resize the first poster
         img_data = download_image(posters[0])
+        if not img_data and len(posters) > 1:
+            # Try the next poster if first fails
+            img_data = download_image(posters[1])
+        
         if not img_data:
-            return None
+            # Try fallback if poster download fails
+            fallback_url = await get_fallback_poster(bot, movie_name)
+            if fallback_url:
+                img_data = download_image(fallback_url)
+                if not img_data:
+                    return None
             
         # Save temporarily
         filename = f"temp_poster_{movie_name.replace(' ', '_')}.jpg"
-        if upscale_to_4k(img_data, filename):
+        if resize_to_1440p(img_data, filename):
             # Upload to Telegram and get file_id
             with open(filename, 'rb') as f:
                 msg = await bot.send_photo(
@@ -202,6 +262,25 @@ async def search_and_upload_poster(bot, movie_name):
             
     except Exception as e:
         logger.error(f"Error in poster search: {e}")
+        # Try fallback on any error
+        try:
+            fallback_url = await get_fallback_poster(bot, movie_name)
+            if fallback_url:
+                img_data = download_image(fallback_url)
+                if img_data:
+                    filename = f"temp_poster_{movie_name.replace(' ', '_')}.jpg"
+                    if resize_to_1440p(img_data, filename):
+                        with open(filename, 'rb') as f:
+                            msg = await bot.send_photo(
+                                chat_id=MOVIE_UPDATE_CHANNEL,
+                                photo=f,
+                                caption=f"Poster for {movie_name}"
+                            )
+                        poster_file_id = msg.photo.file_id if msg.photo else None
+                        os.remove(filename)
+                        return poster_file_id
+        except Exception as fallback_error:
+            logger.error(f"Fallback also failed: {fallback_error}")
     
     return None
 
@@ -457,7 +536,7 @@ async def send_movie_update(bot, base_name):
                 is_photo = True
             elif movie_doc.get("poster_url") and not LINK_PREVIEW:
                 # Fallback to URL if file_id is not available
-                resized_poster = await fetch_image(movie_doc["poster_url"], size=(2560, 1440) if LANDSCAPE_POSTER and TMDB_POSTER and not error_tmdb else (853, 1280))
+                resized_poster = await fetch_image(movie_doc["poster_url"], size=(2560, 1440))
                 msg = await bot.send_photo(
                     chat_id=MOVIE_UPDATE_CHANNEL,
                     photo=resized_poster,
@@ -500,7 +579,7 @@ async def update_movie_message(bot, base_name):
         text = generate_movie_message(movie_doc, base_name)
         buttons = InlineKeyboardMarkup([[
             InlineKeyboardButton(
-                'ɢᴇᴛ ғɪʟᴇs',
+                '📤 ɢᴇᴛ ғɪʟᴇs 📤',
                 url=f"https://t.me/{temp.U_NAME}?start=getfile-{base_name.replace(' ', '-')}"
             )
         ]])
