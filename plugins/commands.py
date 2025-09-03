@@ -237,17 +237,10 @@ async def start(client, message):
             settings      = await get_settings(chat)
             fsub_channels = list(dict.fromkeys((settings.get('fsub', []) if settings else [])+ AUTH_CHANNELS)) 
 
-            if fsub_channels or AUTH_REQ_CHANNELS:
-    # Show waiting text while checking
-    wait_msg = await message.reply_text("⏳ Checking channel membership... Please wait")
-    await asyncio.sleep(1.5)
-
-    if fsub_channels:
-        btn += await is_subscribed(client, message.from_user.id, fsub_channels)
-    if AUTH_REQ_CHANNELS:
-        btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
-
-    await wait_msg.delete()
+            if fsub_channels:
+                btn += await is_subscribed(client, message.from_user.id, fsub_channels)
+            if AUTH_REQ_CHANNELS:
+                btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
             if btn:
                 if len(message.command) > 1 and "_" in message.command[1]:
                     kk, file_id = message.command[1].split("_", 1)
@@ -255,7 +248,7 @@ async def start(client, message):
                         InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", callback_data=f"checksub#{kk}#{file_id}")
                     ])
                     reply_markup = InlineKeyboardMarkup(btn)
-                photo = random.choice(FSUB_PICS) if FSUB_PICS else "https://i.ibb.co/XfN1dKDP/x.jpg"
+                photo = random.choice(FSUB_PICS) if FSUB_PICS else "https://graph.org/file/7478ff3eac37f4329c3d8.jpg"
                 caption = (
                     f"👋 ʜᴇʟʟᴏ {message.from_user.mention}\n\n"
                     "🛑 ʏᴏᴜ ᴍᴜsᴛ ᴊᴏɪɴ ᴛʜᴇ ʀᴇǫᴜɪʀᴇᴅ ᴄʜᴀɴɴᴇʟs ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ.\n"
