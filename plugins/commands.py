@@ -237,22 +237,17 @@ async def start(client, message):
             settings      = await get_settings(chat)
             fsub_channels = list(dict.fromkeys((settings.get('fsub', []) if settings else [])+ AUTH_CHANNELS)) 
 
-            # Wait text while checking force-sub
-            wait_msg = await message.reply_text("⏳ Checking channel membership... Please wait")
-            await asyncio.sleep(1.5)
-            # Wait text while checking force-sub
-            wait_msg = await message.reply_text("⏳ Checking channel membership... Please wait")
-            await asyncio.sleep(1.5)
-            if fsub_channels:
-                btn += await is_subscribed(client, message.from_user.id, fsub_channels)
-                        await wait_msg.delete()
-            # Wait text while checking force-sub
-            wait_msg = await message.reply_text("⏳ Checking channel membership... Please wait")
-            await asyncio.sleep(1.5)
-            if AUTH_REQ_CHANNELS:
-                btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
-                        await wait_msg.delete()
-                        await wait_msg.delete()
+            if fsub_channels or AUTH_REQ_CHANNELS:
+    # Show waiting text while checking
+    wait_msg = await message.reply_text("⏳ Checking channel membership... Please wait")
+    await asyncio.sleep(1.5)
+
+    if fsub_channels:
+        btn += await is_subscribed(client, message.from_user.id, fsub_channels)
+    if AUTH_REQ_CHANNELS:
+        btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
+
+    await wait_msg.delete()
             if btn:
                 if len(message.command) > 1 and "_" in message.command[1]:
                     kk, file_id = message.command[1].split("_", 1)
