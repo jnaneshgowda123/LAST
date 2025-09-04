@@ -494,15 +494,11 @@ def generate_movie_message(movie_doc, base_name):
 
     # Modified to remove poster-related content
     return f"""
-🎬 <b>{base_name}</b> {movie_doc.get('tag', '#MOVIE')}
-
-⭐️ ʀᴀᴛɪɴɢ : <b>{movie_doc.get('rating', 'N/A')}</b>
+<strong>✨ ᴛɪᴛʟᴇ : <code>{filename}</code>
 🎭 ɢᴇɴʀᴇs : <b>{genres}</b>
-🗣️ ʟᴀɴɢᴜᴀɢᴇ : <b>{language_str}</b>
-📺 ᴏᴛᴛ ᴘʟᴀᴛғᴏʀᴍ : <b>{ott_str}</b>
-🎞️ ϙᴜᴀʟɪᴛʏ : <b>{quality_str}</b>
-
-{epi_block}
-
-🔍 sᴇᴀʀᴄʜ ʜᴇʀᴇ : {temp.B_LINK}
-    """.strip()
+🎞️ ǫᴜᴀʟɪᴛʏ : <b>{quality}</b>
+🎧 ᴀᴜᴅɪᴏ    : <b>{language}</b>
+🔥 ʀᴀᴛɪɴɢ   : <b>{rating}</b>
+{episodes}
+©️@JNK_BACKUP</strong>
+""".strip()
