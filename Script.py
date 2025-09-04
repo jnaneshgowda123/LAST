@@ -220,9 +220,7 @@ Mᴇꜱꜱᴀɢᴇ : <b>{}</b>"""
 🎧 ᴀᴜᴅɪᴏ    : <b>{language}</b>
 🔥 ʀᴀᴛɪɴɢ   : <b>{rating}</b>
 {episodes}
-</strong>
-
-<strong>©️@JNK_BACKUP</strong>
+©️@JNK_BACKUP</strong>
 """
 
 
