@@ -271,30 +271,17 @@ async def _process_with_lock(bot, filename, caption, media_info, base_name, proc
     movie_doc = await db.movie_updates.find_one({"_id": base_name})
     
     if not movie_doc:
-        if TMDB_POSTER:
-            details = await get_movie_detailsx(base_name)
-            if details.get("error"):
-                error_tmdb = True
-                logger.info("TMDB error switching to IMDB")
-                details = await get_movie_details(base_name) or {}
-        else:
-            details = await get_movie_details(base_name) or {}
-
-        raw_genres = details.get("genres", "N/A")
-        if isinstance(raw_genres, str):
-            genre_list = [g.strip() for g in raw_genres.split(",")]
-            genres = ", ".join(g for g in genre_list if g in STANDARD_GENRES) or "N/A"
-        else:
-            genres = ", ".join(g for g in raw_genres if g in STANDARD_GENRES) or "N/A"
+        # Skip fetching poster details since we're not using posters
+        details = {}
         
         movie_doc = {
             "_id": base_name,
             "files": [file_data],
-            "poster_url": details.get("backdrop_url") if LANDSCAPE_POSTER and TMDB_POSTER and not error_tmdb else details.get("poster_url"),
-            "genres": genres,
-            "rating": details.get("rating", "N/A"),
-            "imdb_url": details.get("url", "") if not TMDB_POSTER else details.get("tmdb_url", ""),
-            "year": media_info["year"] or details.get("year"),
+            "poster_url": None,  # Set to None to avoid poster
+            "genres": "N/A",
+            "rating": "N/A",
+            "imdb_url": "",
+            "year": media_info["year"],
             "tag": media_info["tag"],
             "ott_platform": media_info["ott_platform"],
             "message_id": None,
@@ -357,27 +344,17 @@ async def send_movie_update(bot, base_name):
                 ]
             ])
 
-            if movie_doc.get("poster_url") and not LINK_PREVIEW:
-                resized_poster = await fetch_image(movie_doc["poster_url"], size=(2560, 1440) if LANDSCAPE_POSTER and TMDB_POSTER and not error_tmdb else (853, 1280))
-                msg = await bot.send_photo(
-                    chat_id=MOVIE_UPDATE_CHANNEL,
-                    photo=resized_poster,
-                    caption=text,
-                    reply_markup=buttons,
-                    parse_mode=enums.ParseMode.HTML
-                )
-                is_photo = True
-            else:
-                send_params = {
-                    "chat_id": MOVIE_UPDATE_CHANNEL,
-                    "text": text,
-                    "reply_markup": buttons,
-                    "parse_mode": enums.ParseMode.HTML
-                }
-                if movie_doc.get("poster_url") and LINK_PREVIEW:
-                    send_params["invert_media"] = ABOVE_PREVIEW
-                msg = await bot.send_message(**send_params)
-                is_photo = False
+            # Always send as text message without photo
+            send_params = {
+                "chat_id": MOVIE_UPDATE_CHANNEL,
+                "text": text,
+                "reply_markup": buttons,
+                "parse_mode": enums.ParseMode.HTML,
+                "disable_web_page_preview": True  # Disable link preview
+            }
+            
+            msg = await bot.send_message(**send_params)
+            is_photo = False
 
             await db.movie_updates.update_one(
                 {"_id": base_name},
@@ -422,24 +399,15 @@ async def update_movie_message(bot, base_name):
             return
 
         try:
-            if is_photo:
-                await bot.edit_message_caption(
-                    chat_id=MOVIE_UPDATE_CHANNEL,
-                    message_id=message_id,
-                    caption=text,
-                    reply_markup=buttons,
-                    parse_mode=enums.ParseMode.HTML
-                )
-            else:
-                await bot.edit_message_text(
-                    chat_id=MOVIE_UPDATE_CHANNEL,
-                    message_id=message_id,
-                    text=text,
-                    reply_markup=buttons,
-                    parse_mode=enums.ParseMode.HTML,
-                    invert_media=ABOVE_PREVIEW,
-                    disable_web_page_preview=not LINK_PREVIEW
-                )
+            # Always edit as text message
+            await bot.edit_message_text(
+                chat_id=MOVIE_UPDATE_CHANNEL,
+                message_id=message_id,
+                text=text,
+                reply_markup=buttons,
+                parse_mode=enums.ParseMode.HTML,
+                disable_web_page_preview=True  # Disable link preview
+            )
             return
         except (MessageIdInvalid, MessageNotModified):
             pass
@@ -524,16 +492,17 @@ def generate_movie_message(movie_doc, base_name):
     language_str = ", ".join(sorted(all_languages)) if all_languages else "N/A"
     ott_str = ", ".join(sorted(all_ott_platforms)) if all_ott_platforms else "N/A"
 
-    return script.MOVIE_UPDATE_NOTIFY_TXT.format(
-        poster_url=movie_doc.get("poster_url", ""),
-        imdb_url=movie_doc.get("imdb_url", ""),
-        filename=base_name,
-        tag=primary_tag,
-        genres=genres,
-        ott=ott_str,
-        quality=quality_str,
-        language=language_str,
-        episodes=epi_block,
-        rating=movie_doc.get("rating", "N/A"),
-        search_link=temp.B_LINK
-    )
+    # Modified to remove poster-related content
+    return f"""
+🎬 <b>{base_name}</b> {movie_doc.get('tag', '#MOVIE')}
+
+⭐️ ʀᴀᴛɪɴɢ : <b>{movie_doc.get('rating', 'N/A')}</b>
+🎭 ɢᴇɴʀᴇs : <b>{genres}</b>
+🗣️ ʟᴀɴɢᴜᴀɢᴇ : <b>{language_str}</b>
+📺 ᴏᴛᴛ ᴘʟᴀᴛғᴏʀᴍ : <b>{ott_str}</b>
+🎞️ ϙᴜᴀʟɪᴛʏ : <b>{quality_str}</b>
+
+{epi_block}
+
+🔍 sᴇᴀʀᴄʜ ʜᴇʀᴇ : {temp.B_LINK}
+    """.strip()
