@@ -1,14 +1,8 @@
 import re
 import logging
 import asyncio
-import os
-import requests
 from datetime import datetime
 from collections import defaultdict
-from io import BytesIO
-from PIL import Image
-from ddgs import DDGS
-
 from plugins.Dreamxfutures.Imdbposter import get_movie_detailsx, fetch_image, get_movie_details
 from database.users_chats_db import db
 from pyrogram import Client, filters, enums
@@ -38,7 +32,7 @@ IGNORE_WORDS = {
     "mar", "marathi", "guj", "gujarati", "urd", "urdu", "kor", "korean", "jpn", 
     "japanese", "nf", "netflix", "sonyliv", "sony", "sliv", "amzn", "prime", 
     "primevideo", "hotstar", "zee5", "jio", "jhs", "aha", "hbo", "paramount", 
-    "apple", "hoichoi", "sunnxt", "viki", "[@FilmyHub4u_Official]", "@shettyMoviez2 ~"
+    "apple", "hoichoi", "sunnxt", "viki"
 }|BAD_WORDS
 
 # Constants
@@ -89,200 +83,11 @@ SINGLE_REGEX = re.compile(r'\bS(\d{1,2})[^\w\n\r]*E(?:p(?:isode)?)?0*(\d{1,3})',
 NAMED_REGEX = re.compile(r'Season\s*0*(\d{1,2})[\s\-,:]*Ep(?:isode)?\s*0*(\d{1,3})', re.IGNORECASE)
 EP_ONLY_RANGE = re.compile(r'\b(?:EP|Episode)0*(\d{1,3})\s*-\s*0*(\d{1,3})\b',re.IGNORECASE)
 
+
 MEDIA_FILTER = filters.document | filters.video | filters.audio
 locks = defaultdict(asyncio.Lock)
 pending_updates = {}
 
-# Poster search functions
-def search_posters(query, max_results=3):
-    posters = []
-    print(f"[INFO] Searching DuckDuckGo for: {query} movie poster")
-    try:
-        import time
-        import random
-
-        # Add random delay to avoid rate limiting
-        time.sleep(random.uniform(3, 6))  # Increased delay
-
-        with DDGS() as ddgs:
-            # Try different search variations if first fails
-            search_terms = [
-                f"{query} movie poster",
-                f"{query} film poster",
-                f"{query} cinema poster",
-                f"{query} movie"
-            ]
-
-            for search_term in search_terms:
-                try:
-                    print(f"[INFO] Trying search term: {search_term}")
-                    results = ddgs.images(search_term, max_results=max_results*2, safesearch="off")
-
-                    for res in results:
-                        if res.get("image"):
-                            # Filter for likely poster images
-                            img_url = res["image"]
-                            # More lenient filtering
-                            if any(keyword in img_url.lower() for keyword in ["poster", "jpg", "jpeg", "png", "webp"]):
-                                posters.append(img_url)
-                                print(f"[DEBUG] Poster found: {img_url}")
-                            if len(posters) >= max_results:
-                                break
-
-                    if len(posters) >= max_results:
-                        break
-
-                    # Longer delay between different search terms
-                    time.sleep(2)  # Increased delay
-
-                except Exception as search_error:
-                    print(f"[WARNING] Search term '{search_term}' failed: {search_error}")
-                    # Longer delay on error
-                    time.sleep(5)
-                    continue
-
-    except Exception as e:
-        print(f"[ERROR] Poster search error: {e}")
-
-    return posters[:max_results]
-
-def download_image(url):
-    try:
-        print(f"[INFO] Downloading image from: {url}")
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        r = requests.get(url, timeout=15, headers=headers)
-        if r.status_code == 200:
-            return r.content
-        else:
-            print(f"[WARNING] HTTP {r.status_code} for URL: {url}")
-    except Exception as e:
-        print(f"[ERROR] Download error for {url}: {e}")
-    return None
-
-def resize_to_1440p(image_bytes, save_path):
-    try:
-        img = Image.open(BytesIO(image_bytes)).convert("RGB")
-        # Resize to 2560x1440 (1440p) while maintaining aspect ratio
-        img.thumbnail((2560, 1440), Image.LANCZOS)
-        
-        # Create a new image with the target size and paste the resized image
-        new_img = Image.new("RGB", (2560, 1440), (0, 0, 0))
-        img_width, img_height = img.size
-        offset = ((2560 - img_width) // 2, (1440 - img_height) // 2)
-        new_img.paste(img, offset)
-        
-        new_img.save(save_path, format="JPEG", quality=95, optimize=True)
-        return True
-    except Exception as e:
-        print(f"Resize error: {e}")
-        return False
-
-async def get_fallback_poster(bot, movie_name):
-    """Fallback to IMDB/TMDB if DuckDuckGo fails"""
-    try:
-        if TMDB_POSTER:
-            details = await get_movie_detailsx(movie_name)
-            if not details.get("error"):
-                return details.get("backdrop_url") if LANDSCAPE_POSTER else details.get("poster_url")
-        
-        # Fallback to IMDB
-        details = await get_movie_details(movie_name) or {}
-        return details.get("poster_url")
-    except Exception as e:
-        logger.error(f"Fallback poster error: {e}")
-        return None
-
-async def search_and_upload_poster(bot, movie_name):
-    """Search for a poster and upload it to Telegram in 2560x1440 resolution"""
-    try:
-        # Search for posters
-        posters = search_posters(movie_name)
-        
-        # If no posters found, use fallback
-        if not posters:
-            fallback_url = await get_fallback_poster(bot, movie_name)
-            if fallback_url:
-                # Download from fallback URL
-                img_data = download_image(fallback_url)
-                if img_data:
-                    # Save temporarily
-                    filename = f"temp_poster_{movie_name.replace(' ', '_')}.jpg"
-                    if resize_to_1440p(img_data, filename):
-                        # Upload to Telegram and get file_id
-                        with open(filename, 'rb') as f:
-                            msg = await bot.send_photo(
-                                chat_id=MOVIE_UPDATE_CHANNEL,
-                                photo=f,
-                                caption=f"Poster for {movie_name}"
-                            )
-                        
-                        # Get file_id for future use
-                        poster_file_id = msg.photo.file_id if msg.photo else None
-                        
-                        # Clean up
-                        os.remove(filename)
-                        
-                        return poster_file_id
-            return None
-            
-        # Download and resize the first poster
-        img_data = download_image(posters[0])
-        if not img_data and len(posters) > 1:
-            # Try the next poster if first fails
-            img_data = download_image(posters[1])
-        
-        if not img_data:
-            # Try fallback if poster download fails
-            fallback_url = await get_fallback_poster(bot, movie_name)
-            if fallback_url:
-                img_data = download_image(fallback_url)
-                if not img_data:
-                    return None
-            
-        # Save temporarily
-        filename = f"temp_poster_{movie_name.replace(' ', '_')}.jpg"
-        if resize_to_1440p(img_data, filename):
-            # Upload to Telegram and get file_id
-            with open(filename, 'rb') as f:
-                msg = await bot.send_photo(
-                    chat_id=MOVIE_UPDATE_CHANNEL,
-                    photo=f,
-                    caption=f"Poster for {movie_name}"
-                )
-            
-            # Get file_id for future use
-            poster_file_id = msg.photo.file_id if msg.photo else None
-            
-            # Clean up
-            os.remove(filename)
-            
-            return poster_file_id
-            
-    except Exception as e:
-        logger.error(f"Error in poster search: {e}")
-        # Try fallback on any error
-        try:
-            fallback_url = await get_fallback_poster(bot, movie_name)
-            if fallback_url:
-                img_data = download_image(fallback_url)
-                if img_data:
-                    filename = f"temp_poster_{movie_name.replace(' ', '_')}.jpg"
-                    if resize_to_1440p(img_data, filename):
-                        with open(filename, 'rb') as f:
-                            msg = await bot.send_photo(
-                                chat_id=MOVIE_UPDATE_CHANNEL,
-                                photo=f,
-                                caption=f"Poster for {movie_name}"
-                            )
-                        poster_file_id = msg.photo.file_id if msg.photo else None
-                        os.remove(filename)
-                        return poster_file_id
-        except Exception as fallback_error:
-            logger.error(f"Fallback also failed: {fallback_error}")
-    
-    return None
 
 def clean_mentions_links(text: str) -> str:
     return CLEAN_PATTERN.sub("", text or "").strip()
@@ -458,21 +263,16 @@ async def _process_with_lock(bot, filename, caption, media_info, base_name, proc
         else:
             details = await get_movie_details(base_name) or {}
 
-        # Try to get a poster using the new function
-        poster_file_id = await search_and_upload_poster(bot, base_name)
-        
         raw_genres = details.get("genres", "N/A")
         if isinstance(raw_genres, str):
             genre_list = [g.strip() for g in raw_genres.split(",")]
             genres = ", ".join(g for g in genre_list if g in STANDARD_GENRES) or "N/A"
         else:
             genres = ", ".join(g for g in raw_genres if g in STANDARD_GENRES) or "N/A"
-            
         movie_doc = {
             "_id": base_name,
             "files": [file_data],
             "poster_url": details.get("backdrop_url") if LANDSCAPE_POSTER and TMDB_POSTER and not error_tmdb else details.get("poster_url"),
-            "poster_file_id": poster_file_id,
             "genres": genres,
             "rating": details.get("rating", "N/A"),
             "imdb_url": details.get("url", "")if not TMDB_POSTER else details.get("tmdb_url"),
@@ -524,19 +324,8 @@ async def send_movie_update(bot, base_name):
                 )
             ]])
 
-            if movie_doc.get("poster_file_id") and not LINK_PREVIEW:
-                # Use the stored file_id instead of URL
-                msg = await bot.send_photo(
-                    chat_id=MOVIE_UPDATE_CHANNEL,
-                    photo=movie_doc["poster_file_id"],
-                    caption=text,
-                    reply_markup=buttons,
-                    parse_mode=enums.ParseMode.HTML
-                )
-                is_photo = True
-            elif movie_doc.get("poster_url") and not LINK_PREVIEW:
-                # Fallback to URL if file_id is not available
-                resized_poster = await fetch_image(movie_doc["poster_url"], size=(2560, 1440))
+            if movie_doc.get("poster_url") and not LINK_PREVIEW:
+                resized_poster = await fetch_image(movie_doc["poster_url"], size=(2560, 1440) if LANDSCAPE_POSTER and TMDB_POSTER and not error_tmdb else (853, 1280))
                 msg = await bot.send_photo(
                     chat_id=MOVIE_UPDATE_CHANNEL,
                     photo=resized_poster,
@@ -577,12 +366,20 @@ async def update_movie_message(bot, base_name):
             return
 
         text = generate_movie_message(movie_doc, base_name)
-        buttons = InlineKeyboardMarkup([[
-            InlineKeyboardButton(
-                '📤 ɢᴇᴛ ғɪʟᴇs 📤',
-                url=f"https://t.me/{temp.U_NAME}?start=getfile-{base_name.replace(' ', '-')}"
-            )
-        ]])
+        buttons = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                   '📂 ɢᴇᴛ ғɪʟᴇs 📂',
+                   url=f"https://t.me/{temp.U_NAME}?start=getfile-{base_name.replace(' ', '-')}"
+               )
+           ],
+           [
+                InlineKeyboardButton(
+                    '────୨ৎ────',
+                    url="https://t.me/JNK_BACKUP"
+                )
+          ]
+        ])
 
         message_id = movie_doc.get("message_id")
         is_photo = movie_doc.get("is_photo", False)
