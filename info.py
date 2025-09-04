@@ -189,6 +189,11 @@ BAD_WORDS = {
     "mkvcinemas",
     "primefix",
     "join",
+    "@FilmyHub4u_Official",
+    "[@FilmyHub4u_Official]",
+    "[ 𝐓𝐆 :- @FilmRooM07 ]",
+    "[]",
+    "[MS]"
     "www",
     "villa",
     "tg",
