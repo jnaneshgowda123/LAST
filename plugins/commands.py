@@ -237,10 +237,20 @@ async def start(client, message):
             settings      = await get_settings(chat)
             fsub_channels = list(dict.fromkeys((settings.get('fsub', []) if settings else [])+ AUTH_CHANNELS)) 
 
+            # Send checking message
+            checking_msg = await message.reply_text(
+                "🔍 **Checking subscription status...**",
+                parse_mode=enums.ParseMode.MARKDOWN
+            )
+            
             if fsub_channels:
                 btn += await is_subscribed(client, message.from_user.id, fsub_channels)
             if AUTH_REQ_CHANNELS:
                 btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
+            
+            # Delete checking message
+            await checking_msg.delete()
+            
             if btn:
                 if len(message.command) > 1 and "_" in message.command[1]:
                     kk, file_id = message.command[1].split("_", 1)
@@ -265,7 +275,6 @@ async def start(client, message):
         except Exception as e:
             await log_error(client, f"❗️ Force Sub Error:\n\n{repr(e)}")
             logger.error(f"❗️ Force Sub Error:\n\n{repr(e)}")
-
 
     user_id = m.from_user.id
     if not await db.has_premium_access(user_id):
