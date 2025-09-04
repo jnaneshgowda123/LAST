@@ -359,7 +359,7 @@ async def start(client, message):
                     btn = [
                         [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)],
                         [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
-                        [InlineKeyboardButton('👋( ͜ ㅅ ͜ )💥', url='https://t.me/newxxxiobot?start=restart')]
+                        [InlineKeyboardButton('🔥 adult bot 🔥', url='https://t.me/newxxxiobot?start=restart')]
                     ]
                 msg = await client.send_cached_media(
                     chat_id=message.from_user.id,
@@ -406,7 +406,7 @@ async def start(client, message):
                 btn = [
                     [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)],
                     [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
-                    [InlineKeyboardButton('👋( ͜ ㅅ ͜ )💥', url='https://t.me/newxxxiobot?start=restart')]
+                    [InlineKeyboardButton('🔥 adult bot 🔥', url='https://t.me/newxxxiobot?start=restart')]
                ] 
             msg = await client.send_cached_media(
                 chat_id=message.from_user.id,
@@ -482,7 +482,7 @@ async def start(client, message):
         btn = [
                     [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)],
                     [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
-                    [InlineKeyboardButton('👋( ͜ ㅅ ͜ )💥', url='https://t.me/newxxxiobot?start=restart')]
+                    [InlineKeyboardButton('🔥 adult bot 🔥', url='https://t.me/newxxxiobot?start=restart')]
                ]
     msg = await client.send_cached_media(
         chat_id=message.from_user.id,
