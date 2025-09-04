@@ -491,14 +491,15 @@ def generate_movie_message(movie_doc, base_name):
     quality_str = ", ".join(sorted(all_qualities)) if all_qualities else "N/A"
     language_str = ", ".join(sorted(all_languages)) if all_languages else "N/A"
     ott_str = ", ".join(sorted(all_ott_platforms)) if all_ott_platforms else "N/A"
+    rating = movie_doc.get("rating", "N/A")
 
-    # Modified to remove poster-related content
+    # Fixed the template with correct variable names
     return f"""
-<strong>✨ ᴛɪᴛʟᴇ : <code>{filename}</code>
+✨ ᴛɪᴛʟᴇ : <code>{base_name}</code>
 🎭 ɢᴇɴʀᴇs : <b>{genres}</b>
-🎞️ ǫᴜᴀʟɪᴛʏ : <b>{quality}</b>
-🎧 ᴀᴜᴅɪᴏ    : <b>{language}</b>
-🔥 ʀᴀᴛɪɴɢ   : <b>{rating}</b>
-{episodes}
-©️@JNK_BACKUP</strong>
+🎞️ ǫᴜᴀʟɪᴛʏ : <b>{quality_str}</b>
+🎧 ᴀᴜᴅɪᴏ : <b>{language_str}</b>
+🔥 ʀᴀᴛɪɴɢ : <b>{rating}</b>
+{epi_block if epi_block else ""}
+©️@JNK_BACKUP
 """.strip()
