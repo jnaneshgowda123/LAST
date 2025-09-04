@@ -50,10 +50,6 @@ def filter_username_urls(text):
     
     return text.strip()
 
-# Example usage in your code:
-# Before processing text, call filter_username_urls() to clean it
-# cleaned_text = filter_username_urls(original_text)
-
 # Constants
 CAPTION_LANGUAGES = {
     "hin": "Hindi", "hindi": "Hindi",
@@ -107,6 +103,9 @@ MEDIA_FILTER = filters.document | filters.video | filters.audio
 locks = defaultdict(asyncio.Lock)
 pending_updates = {}
 
+# Initialize movie_updates collection
+if not hasattr(db, 'movie_updates'):
+    db.movie_updates = db.db.movie_updates
 
 def clean_mentions_links(text: str) -> str:
     return CLEAN_PATTERN.sub("", text or "").strip()
@@ -254,12 +253,9 @@ async def process_and_send_update(bot, filename, caption):
         logger.exception("Processing failed: %s", e)
 
 async def _process_with_lock(bot, filename, caption, media_info, base_name, processed):
-    if not hasattr(db, 'movie_updates'):
-        db.movie_updates = db.db.movie_updates
-
-    movie_doc = await db.movie_updates.find_one({"_id": base_name})
     global error_tmdb
-    error_tmdb=False
+    error_tmdb = False
+    
     file_data = {
         "filename": filename,
         "processed": processed,
@@ -272,11 +268,13 @@ async def _process_with_lock(bot, filename, caption, media_info, base_name, proc
         "episode": media_info["episode"]
     }
 
+    movie_doc = await db.movie_updates.find_one({"_id": base_name})
+    
     if not movie_doc:
         if TMDB_POSTER:
             details = await get_movie_detailsx(base_name)
             if details.get("error"):
-                error_tmdb=True
+                error_tmdb = True
                 logger.info("TMDB error switching to IMDB")
                 details = await get_movie_details(base_name) or {}
         else:
@@ -288,19 +286,21 @@ async def _process_with_lock(bot, filename, caption, media_info, base_name, proc
             genres = ", ".join(g for g in genre_list if g in STANDARD_GENRES) or "N/A"
         else:
             genres = ", ".join(g for g in raw_genres if g in STANDARD_GENRES) or "N/A"
+        
         movie_doc = {
             "_id": base_name,
             "files": [file_data],
             "poster_url": details.get("backdrop_url") if LANDSCAPE_POSTER and TMDB_POSTER and not error_tmdb else details.get("poster_url"),
             "genres": genres,
             "rating": details.get("rating", "N/A"),
-            "imdb_url": details.get("url", "")if not TMDB_POSTER else details.get("tmdb_url"),
+            "imdb_url": details.get("url", "") if not TMDB_POSTER else details.get("tmdb_url", ""),
             "year": media_info["year"] or details.get("year"),
             "tag": media_info["tag"],
             "ott_platform": media_info["ott_platform"],
             "message_id": None,
             "is_photo": False
         }
+        
         try:
             await db.movie_updates.insert_one(movie_doc)
             await send_movie_update(bot, base_name)
@@ -329,6 +329,12 @@ async def _process_with_lock(bot, filename, caption, media_info, base_name, proc
 async def send_movie_update(bot, base_name):
     max_retries = 3
     base_delay = 5
+    
+    # Check if MOVIE_UPDATE_CHANNEL is valid
+    if not MOVIE_UPDATE_CHANNEL:
+        logger.error("MOVIE_UPDATE_CHANNEL is not configured")
+        return None
+    
     for attempt in range(max_retries):
         try:
             movie_doc = await db.movie_updates.find_one({"_id": base_name})
@@ -337,19 +343,19 @@ async def send_movie_update(bot, base_name):
 
             text = generate_movie_message(movie_doc, base_name)
             buttons = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                   '📂 ɢᴇᴛ ғɪʟᴇs 📂',
-                   url=f"https://t.me/{temp.U_NAME}?start=getfile-{base_name.replace(' ', '-')}"
-               )
-           ],
-           [
-                InlineKeyboardButton(
-                    '────୨ৎ────',
-                    url="https://t.me/JNK_BACKUP"
-                )
-          ]
-          ])
+                [
+                    InlineKeyboardButton(
+                       '📂 ɢᴇᴛ ғɪʟᴇs 📂',
+                       url=f"https://t.me/{temp.U_NAME}?start=getfile-{base_name.replace(' ', '-')}"
+                   )
+                ],
+                [
+                    InlineKeyboardButton(
+                        '────୨ৎ────',
+                        url="https://t.me/JNK_BACKUP"
+                    )
+                ]
+            ])
 
             if movie_doc.get("poster_url") and not LINK_PREVIEW:
                 resized_poster = await fetch_image(movie_doc["poster_url"], size=(2560, 1440) if LANDSCAPE_POSTER and TMDB_POSTER and not error_tmdb else (853, 1280))
