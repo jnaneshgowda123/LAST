@@ -32,8 +32,27 @@ IGNORE_WORDS = {
     "mar", "marathi", "guj", "gujarati", "urd", "urdu", "kor", "korean", "jpn", 
     "japanese", "nf", "netflix", "sonyliv", "sony", "sliv", "amzn", "prime", 
     "primevideo", "hotstar", "zee5", "jio", "jhs", "aha", "hbo", "paramount", 
-    "apple", "hoichoi", "sunnxt", "viki"
-}|BAD_WORDS
+    "apple", "hoichoi", "sunnxt", "viki", "@FilmyHub4u_Official", "[@FilmyHub4u_Official]",
+    "[ 𝐓𝐆 :- @FilmRooM07 ]", "[]", "[", "]", "[MS]"
+} | BAD_WORDS
+
+# Function to detect and filter out usernames and URLs
+def filter_username_urls(text):
+    import re
+    # Pattern to match Telegram usernames (e.g., @username, @user_name, @user123)
+    username_pattern = r'@[a-zA-Z0-9_]+'
+    # Pattern to match website URLs (e.g., http://, https://, www.)
+    url_pattern = r'https?://\S+|www\.\S+'
+    
+    # Remove usernames and URLs from text
+    text = re.sub(username_pattern, '', text)
+    text = re.sub(url_pattern, '', text)
+    
+    return text.strip()
+
+# Example usage in your code:
+# Before processing text, call filter_username_urls() to clean it
+# cleaned_text = filter_username_urls(original_text)
 
 # Constants
 CAPTION_LANGUAGES = {
@@ -317,12 +336,20 @@ async def send_movie_update(bot, base_name):
                 return None
 
             text = generate_movie_message(movie_doc, base_name)
-            buttons = InlineKeyboardMarkup([[
+            buttons = InlineKeyboardMarkup([
+            [
                 InlineKeyboardButton(
-                    'ɢᴇᴛ ғɪʟᴇs',
-                    url=f"https://t.me/{temp.U_NAME}?start=getfile-{base_name.replace(' ', '-')}"
+                   '📂 ɢᴇᴛ ғɪʟᴇs 📂',
+                   url=f"https://t.me/{temp.U_NAME}?start=getfile-{base_name.replace(' ', '-')}"
+               )
+           ],
+           [
+                InlineKeyboardButton(
+                    '────୨ৎ────',
+                    url="https://t.me/JNK_BACKUP"
                 )
-            ]])
+          ]
+          ])
 
             if movie_doc.get("poster_url") and not LINK_PREVIEW:
                 resized_poster = await fetch_image(movie_doc["poster_url"], size=(2560, 1440) if LANDSCAPE_POSTER and TMDB_POSTER and not error_tmdb else (853, 1280))
