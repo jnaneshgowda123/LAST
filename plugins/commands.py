@@ -231,6 +231,9 @@ async def start(client, message):
         _, grp_id, file_id = "", 0, data
 
     if not await db.has_premium_access(message.from_user.id): 
+        # Show checking message during force subscription verification
+        check_msg = await message.reply_text("🔄 <b>ᴄʜᴇᴄᴋɪɴɢ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ...</b>", parse_mode=enums.ParseMode.HTML)
+        
         try:
             btn = []
             chat = int(data.split("_", 2)[1])
@@ -241,6 +244,10 @@ async def start(client, message):
                 btn += await is_subscribed(client, message.from_user.id, fsub_channels)
             if AUTH_REQ_CHANNELS:
                 btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
+            
+            # Delete checking message after verification is complete
+            await check_msg.delete()
+            
             if btn:
                 if len(message.command) > 1 and "_" in message.command[1]:
                     kk, file_id = message.command[1].split("_", 1)
@@ -263,6 +270,11 @@ async def start(client, message):
                 return
 
         except Exception as e:
+            # Delete checking message if error occurs
+            try:
+                await check_msg.delete()
+            except:
+                pass
             await log_error(client, f"❗️ Force Sub Error:\n\n{repr(e)}")
             logger.error(f"❗️ Force Sub Error:\n\n{repr(e)}")
 
