@@ -210,7 +210,15 @@ Nᴀᴍᴇ : {}
 
 Mᴇꜱꜱᴀɢᴇ : <b>{}</b>"""
     
-    CAPTION = """<b><a href="https://t.me/JNK_BACKUP">{file_name}</a></b>\n\n<b>⚜️ Powered By : <a href="https://t.me/JNK_BACKUP">[ JNK_BACKUP ]</a></b>"""
+    CAPTION = """<b>📂 ғɪʟᴇɴᴀᴍᴇ : {file_name}
+
+⚙️ sɪᴢᴇ : {file_size}
+
+◾️◾️◾️◾️◾️◾️◾️◾️◾️◾️◾️◾️◾️
+🔞 Adult t.me/+hLQh-FvQcL0xNWZl
+👀 Main channel @JNK_BACKUP
+🛒 Loots channel @JNKFREELOOTS 
+◾️◾️◾️◾️◾️◾️◾️◾️◾️◾️◾️◾️◾️</b>"""
 
     
     MOVIE_UPDATE_NOTIFY_TXT = """
@@ -220,7 +228,7 @@ Mᴇꜱꜱᴀɢᴇ : <b>{}</b>"""
 🎧 ᴀᴜᴅɪᴏ    : <b>{language}</b>
 🔥 ʀᴀᴛɪɴɢ   : <b>{rating}</b>
 {episodes}
-©️@JNK_BACKUP</strong>
+<blockquote>©️@JNK_BACKUP</blockquote></strong>
 """
 
 
