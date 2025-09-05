@@ -33,7 +33,7 @@ IGNORE_WORDS = {
     "japanese", "nf", "netflix", "sonyliv", "sony", "sliv", "amzn", "prime", 
     "primevideo", "hotstar", "zee5", "jio", "jhs", "aha", "hbo", "paramount", 
     "apple", "hoichoi", "sunnxt", "viki", "@FilmyHub4u_Official", "[@FilmyHub4u_Official]",
-    "[ 𝐓𝐆 :- @FilmRooM07 ]", "[]", "[", "]", "[MS]"
+    "[ 𝐓𝐆 :- @FilmRooM07 ]", "[]", "[", "]", "[MS]", "Official"
 } | BAD_WORDS
 
 # Function to detect and filter out usernames and URLs
@@ -338,9 +338,9 @@ async def send_movie_update(bot, base_name):
                 ],
                 [
                     InlineKeyboardButton(
-                        '────୨ৎ────',
-                        url="https://t.me/JNK_BACKUP"
-                    )
+                    '🔞 ADULT CHANNEL 🔞',
+                    url="https://t.me/+01z_dRj5wmgyNWE1"
+                     )
                 ]
             ])
 
@@ -385,8 +385,8 @@ async def update_movie_message(bot, base_name):
            ],
            [
                 InlineKeyboardButton(
-                    '────୨ৎ────',
-                    url="https://t.me/JNK_BACKUP"
+                    '🔞 ADULT CHANNEL 🔞',
+                    url="https://t.me/+01z_dRj5wmgyNWE1"
                 )
           ]
         ])
@@ -501,5 +501,5 @@ def generate_movie_message(movie_doc, base_name):
 🎧 ᴀᴜᴅɪᴏ : <b>{language_str}</b>
 🔥 ʀᴀᴛɪɴɢ : <b>{rating}</b>
 {epi_block if epi_block else ""}
-©️@JNK_BACKUP
+<blockquote>©️@JNK_BACKUP</blockquote>
 """.strip()
