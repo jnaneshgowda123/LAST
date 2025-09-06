@@ -50,6 +50,51 @@ def filter_username_urls(text):
     
     return text.strip()
 
+# Function to detect and remove common prefixes and special words
+def detect_and_remove_prefix(text):
+    import re
+    
+    # Common prefixes to detect and remove
+    common_prefixes = [
+        r'\[.*?\]',  # Remove anything in square brackets
+        r'\(.*?\)',  # Remove anything in parentheses at start
+        r'^[^\w\s]*',  # Remove special characters at start
+        r'^\d+\.\s*',  # Remove number patterns like "1. ", "01. "
+        r'^www\.',  # Remove www. at start
+        r'^[a-zA-Z]+\s*[-_.]\s*',  # Remove prefix followed by dash, underscore, or dot
+    ]
+    
+    # Apply prefix removal patterns
+    for pattern in common_prefixes:
+        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+    
+    # Remove multiple spaces and clean up
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
+
+# Enhanced function to remove ignored words and bad words
+def remove_bad_words_and_ignored(text):
+    words = text.split()
+    cleaned_words = []
+    
+    for word in words:
+        # Convert to lowercase for comparison
+        word_lower = word.lower()
+        
+        # Check if word contains any bad word or ignored word
+        is_bad = False
+        for bad_word in IGNORE_WORDS:
+            if bad_word.lower() in word_lower:
+                is_bad = True
+                break
+        
+        # Only keep word if it's not bad and has meaningful length
+        if not is_bad and len(word.strip()) > 1:
+            cleaned_words.append(word)
+    
+    return " ".join(cleaned_words)
+
 # Constants
 CAPTION_LANGUAGES = {
     "hin": "Hindi", "hindi": "Hindi",
@@ -115,8 +160,8 @@ def normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 def remove_ignored_words(text: str) -> str:
-    IGNORE_WORDS_LOWER = {w.lower() for w in IGNORE_WORDS}
-    return " ".join(word for word in text.split() if word.lower() not in IGNORE_WORDS_LOWER)
+    # Use the enhanced bad words removal function
+    return remove_bad_words_and_ignored(text)
 
 def get_qualities(text: str) -> str:
     qualities = QUALITY_PATTERN.findall(text)
@@ -152,8 +197,22 @@ def schedule_update(bot, base_name, delay=5):
     )
 
 def extract_media_info(filename: str, caption: str):
-    filename = normalize(clean_mentions_links(filename).title())
+    # Step 1: Clean mentions and links
+    filename_cleaned = clean_mentions_links(filename)
+    
+    # Step 2: Remove prefixes and special patterns
+    filename_cleaned = detect_and_remove_prefix(filename_cleaned)
+    
+    # Step 3: Remove bad words and ignored words
+    filename_cleaned = remove_bad_words_and_ignored(filename_cleaned)
+    
+    # Step 4: Normalize the cleaned filename
+    filename = normalize(filename_cleaned.title())
+    
     caption_clean = clean_mentions_links(caption).lower() if caption else ""
+    # Also clean caption from bad words
+    caption_clean = remove_bad_words_and_ignored(caption_clean)
+    
     unified = f"{caption_clean} {filename.lower()}".strip()
 
     season = episode = year = None
@@ -496,10 +555,8 @@ def generate_movie_message(movie_doc, base_name):
     # Fixed the template with correct variable names
     return f"""
 ✨ ᴛɪᴛʟᴇ : <code>{base_name}</code>
-🎭 ɢᴇɴʀᴇs : <b>{genres}</b>
 🎞️ ǫᴜᴀʟɪᴛʏ : <b>{quality_str}</b>
 🎧 ᴀᴜᴅɪᴏ : <b>{language_str}</b>
-🔥 ʀᴀᴛɪɴɢ : <b>{rating}</b>
 {epi_block if epi_block else ""}
 <blockquote>©️@JNK_BACKUP</blockquote>
 """.strip()
