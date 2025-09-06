@@ -502,14 +502,31 @@ def generate_movie_message(movie_doc, base_name):
 
     # Process all files to collect unique qualities, languages, etc.
     for file in movie_doc["files"]:
-        # Extract qualities
+        # Extract qualities from both quality field and filename
+        quality_sources = []
         if file.get("quality") and file["quality"] != "N/A":
-            qualities = [q.strip() for q in file["quality"].split(",") if q.strip()]
+            quality_sources.append(file["quality"])
+        # Also extract from filename
+        filename = file.get("filename", "")
+        filename_qualities = get_qualities(filename)
+        if filename_qualities != "N/A":
+            quality_sources.append(filename_qualities)
+        
+        for quality_source in quality_sources:
+            qualities = [q.strip() for q in quality_source.split(",") if q.strip()]
             all_qualities.update(qualities)
         
-        # Extract languages
+        # Extract languages from both language field and filename/caption
+        language_sources = []
         if file.get("language") and file["language"] != "N/A":
-            languages = [l.strip() for l in file["language"].split(",") if l.strip()]
+            language_sources.append(file["language"])
+        # Also extract from filename
+        filename_language = extract_language_from_text(filename)
+        if filename_language != "N/A":
+            language_sources.append(filename_language)
+            
+        for language_source in language_sources:
+            languages = [l.strip() for l in language_source.split(",") if l.strip()]
             all_languages.update(languages)
         
         # Extract OTT platforms
@@ -526,6 +543,17 @@ def generate_movie_message(movie_doc, base_name):
             season = file["season"]
             episode = file["episode"]
             episodes_by_season[season].add(episode)
+
+    # Helper function to extract language from text
+    def extract_language_from_text(text):
+        if not text:
+            return "N/A"
+        text = text.lower()
+        found_languages = []
+        for key, value in CAPTION_LANGUAGES.items():
+            if key in text:
+                found_languages.append(value)
+        return ", ".join(sorted(set(found_languages))) if found_languages else "N/A"
 
     # Determine primary tag
     primary_tag = "#SERIES" if "#SERIES" in all_tags else "#MOVIE"
@@ -568,18 +596,27 @@ def generate_movie_message(movie_doc, base_name):
         if epi_str:
             epi_block = f"📺 ᴇᴘɪsᴏᴅᴇs : <b>\n{epi_str}</b>"
 
-    # Prepare final strings
+    # Prepare final strings with better formatting
     genres = movie_doc.get("genres", "N/A")
-    quality_str = ", ".join(sorted(all_qualities)) if all_qualities else "N/A"
-    language_str = ", ".join(sorted(all_languages)) if all_languages else "N/A"
+    
+    # Enhanced quality string - remove duplicates and clean up
+    quality_list = list(all_qualities)
+    quality_str = ", ".join(sorted(set([q for q in quality_list if q and q.strip()]))) if quality_list else "N/A"
+    
+    # Enhanced language string - remove duplicates and clean up
+    language_list = list(all_languages)
+    language_str = ", ".join(sorted(set([l for l in language_list if l and l.strip()]))) if language_list else "N/A"
+    
     ott_str = ", ".join(sorted(all_ott_platforms)) if all_ott_platforms else "N/A"
     rating = movie_doc.get("rating", "N/A")
 
-    # Build the message template
+    # Build the message template with emojis preserved
     return f"""
 ✨ ᴛɪᴛʟᴇ : <code>{base_name}</code>
+🎭 ɢᴇɴʀᴇs : <b>{genres}</b>
 🎞️ ǫᴜᴀʟɪᴛʏ : <b>{quality_str}</b>
 🎧 ᴀᴜᴅɪᴏ : <b>{language_str}</b>
+🔥 ʀᴀᴛɪɴɢ : <b>{rating}</b>
 {epi_block if epi_block else ""}
 <blockquote>©️@JNK_BACKUP</blockquote>
 """.strip()
