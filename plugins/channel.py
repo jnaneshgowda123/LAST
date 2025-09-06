@@ -36,42 +36,16 @@ IGNORE_WORDS = {
     "[ 𝐓𝐆 :- @FilmRooM07 ]", "[]", "[", "]", "[MS]", "Official"
 } | BAD_WORDS
 
-# Function to detect and filter out usernames and URLs
-def filter_username_urls(text):
-    import re
-    # Pattern to match Telegram usernames (e.g., @username, @user_name, @user123)
-    username_pattern = r'@[a-zA-Z0-9_]+'
-    # Pattern to match website URLs (e.g., http://, https://, www.)
-    url_pattern = r'https?://\S+|www\.\S+'
-    
-    # Remove usernames and URLs from text
-    text = re.sub(username_pattern, '', text)
-    text = re.sub(url_pattern, '', text)
-    
-    return text.strip()
-
-# Function to detect and remove common prefixes and special words
-def detect_and_remove_prefix(text):
-    import re
-    
-    # Common prefixes to detect and remove
-    common_prefixes = [
-        r'\[.*?\]',  # Remove anything in square brackets
-        r'\(.*?\)',  # Remove anything in parentheses at start
-        r'^[^\w\s]*',  # Remove special characters at start
-        r'^\d+\.\s*',  # Remove number patterns like "1. ", "01. "
-        r'^www\.',  # Remove www. at start
-        r'^[a-zA-Z]+\s*[-_.]\s*',  # Remove prefix followed by dash, underscore, or dot
-    ]
-    
-    # Apply prefix removal patterns
-    for pattern in common_prefixes:
-        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
-    
-    # Remove multiple spaces and clean up
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    return text
+# Helper function to extract language from text
+def extract_language_from_text(text):
+    if not text:
+        return "N/A"
+    text = text.lower()
+    found_languages = []
+    for key, value in CAPTION_LANGUAGES.items():
+        if key in text:
+            found_languages.append(value)
+    return ", ".join(sorted(set(found_languages))) if found_languages else "N/A"
 
 # Enhanced function to remove ignored words and bad words
 def remove_bad_words_and_ignored(text):
@@ -200,13 +174,10 @@ def extract_media_info(filename: str, caption: str):
     # Step 1: Clean mentions and links
     filename_cleaned = clean_mentions_links(filename)
     
-    # Step 2: Remove prefixes and special patterns
-    filename_cleaned = detect_and_remove_prefix(filename_cleaned)
-    
-    # Step 3: Remove bad words and ignored words
+    # Step 2: Remove bad words and ignored words
     filename_cleaned = remove_bad_words_and_ignored(filename_cleaned)
     
-    # Step 4: Normalize the cleaned filename
+    # Step 3: Normalize the cleaned filename
     filename = normalize(filename_cleaned.title())
     
     caption_clean = clean_mentions_links(caption).lower() if caption else ""
@@ -363,9 +334,17 @@ async def _process_with_lock(bot, filename, caption, media_info, base_name, proc
                 movie_doc["files"].append(file_data)
                 schedule_update(bot, base_name)
     else:
-        if any(f["filename"] == filename for f in movie_doc["files"]):
-            return
-        # Update the document with new file and refresh aggregated data
+        # Check if exact same file already exists (by filename and quality)
+        existing_file = None
+        for f in movie_doc["files"]:
+            if f["filename"] == filename and f["quality"] == media_info["quality"]:
+                existing_file = f
+                break
+        
+        if existing_file:
+            return  # Exact same file already exists
+        
+        # Add new file variant (different quality/audio for same movie)
         await db.movie_updates.update_one(
             {"_id": base_name},
             {
@@ -544,17 +523,6 @@ def generate_movie_message(movie_doc, base_name):
             episode = file["episode"]
             episodes_by_season[season].add(episode)
 
-    # Helper function to extract language from text
-    def extract_language_from_text(text):
-        if not text:
-            return "N/A"
-        text = text.lower()
-        found_languages = []
-        for key, value in CAPTION_LANGUAGES.items():
-            if key in text:
-                found_languages.append(value)
-        return ", ".join(sorted(set(found_languages))) if found_languages else "N/A"
-
     # Determine primary tag
     primary_tag = "#SERIES" if "#SERIES" in all_tags else "#MOVIE"
     
@@ -599,18 +567,19 @@ def generate_movie_message(movie_doc, base_name):
     # Prepare final strings with better formatting
     genres = movie_doc.get("genres", "N/A")
     
-    # Enhanced quality string - remove duplicates and clean up
-    quality_list = list(all_qualities)
-    quality_str = ", ".join(sorted(set([q for q in quality_list if q and q.strip()]))) if quality_list else "N/A"
+    # Enhanced quality string - remove duplicates and clean up, prioritize higher qualities
+    quality_priorities = {"2160p": 6, "4k": 6, "1440p": 5, "1080p": 4, "720p": 3, "480p": 2, "360p": 1}
+    sorted_qualities = sorted(all_qualities, key=lambda x: quality_priorities.get(x.lower(), 0), reverse=True)
+    quality_str = ", ".join(sorted_qualities) if sorted_qualities else "N/A"
     
     # Enhanced language string - remove duplicates and clean up
-    language_list = list(all_languages)
-    language_str = ", ".join(sorted(set([l for l in language_list if l and l.strip()]))) if language_list else "N/A"
+    language_list = sorted(set([l for l in all_languages if l and l.strip()]))
+    language_str = ", ".join(language_list) if language_list else "N/A"
     
     ott_str = ", ".join(sorted(all_ott_platforms)) if all_ott_platforms else "N/A"
     rating = movie_doc.get("rating", "N/A")
 
-    # Build the message template with emojis preserved
+    # Build the message template with emojis preserved and improved quality/audio display
     return f"""
 ✨ ᴛɪᴛʟᴇ : <code>{base_name}</code>
 🎭 ɢᴇɴʀᴇs : <b>{genres}</b>
