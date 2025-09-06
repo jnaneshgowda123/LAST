@@ -223,10 +223,8 @@ Mᴇꜱꜱᴀɢᴇ : <b>{}</b>"""
     
     MOVIE_UPDATE_NOTIFY_TXT = """
 <strong>✨ ᴛɪᴛʟᴇ : <code>{filename}</code>
-🎭 ɢᴇɴʀᴇs : <b>{genres}</b>
 🎞️ ǫᴜᴀʟɪᴛʏ : <b>{quality}</b>
 🎧 ᴀᴜᴅɪᴏ    : <b>{language}</b>
-🔥 ʀᴀᴛɪɴɢ   : <b>{rating}</b>
 {episodes}
 <blockquote>©️@JNK_BACKUP</blockquote></strong>
 """
