@@ -54,15 +54,28 @@ async def start(client, message):
     # ==== FORCE SUBSCRIPTION CHECK FOR ALL /START ====
     check_msg = await message.reply_text("🔄 <b>Checking subscription...</b>", parse_mode=enums.ParseMode.HTML)
     btn = []
+    force_sub_required = False
+    
+    # Check all required channels
     if AUTH_CHANNELS:
-        btn += await is_subscribed(client, message.from_user.id, AUTH_CHANNELS)
+        auth_btn = await is_subscribed(client, message.from_user.id, AUTH_CHANNELS)
+        if auth_btn:
+            btn.extend(auth_btn)
+            force_sub_required = True
+    
     if AUTH_REQ_CHANNELS:
-        btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
+        auth_req_btn = await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
+        if auth_req_btn:
+            btn.extend(auth_req_btn)
+            force_sub_required = True
+    
     await check_msg.delete()
-    if btn:
+    
+    # If force subscription is required and user is not subscribed
+    if force_sub_required and btn:
         btn.append([InlineKeyboardButton("♻️ Refresh ♻️", callback_data=f"start_refresh_0_0")])
         await message.reply_text(
-            text="<b>🚫 Please subscribe and try again.</b>",
+            text="<b>🚫 Please subscribe to all required channels and try again.</b>",
             reply_markup=InlineKeyboardMarkup(btn),
             parse_mode=enums.ParseMode.HTML
         )
@@ -73,6 +86,8 @@ async def start(client, message):
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id, message.from_user.first_name)
         await client.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(message.from_user.id, message.from_user.mention))
+    
+    # ... rest of your code continues unchanged ...
     if len(message.command) != 2:
         buttons = [
                         [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
