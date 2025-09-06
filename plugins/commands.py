@@ -230,7 +230,7 @@ async def start(client, message):
     check_msg = await message.reply_text("🔄 <b>ᴄʜᴇᴄᴋɪɴɢ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ...</b>", parse_mode=enums.ParseMode.HTML)
 
     btn = []
-    # Always check force subscription, regardless of premium status
+    # Always check force subscription for every user, including premium users
     if AUTH_CHANNELS:
         btn += await is_subscribed(client, message.from_user.id, AUTH_CHANNELS)
     if AUTH_REQ_CHANNELS:
@@ -238,8 +238,8 @@ async def start(client, message):
 
     await check_msg.delete()
 
-    # Show subscription message if user is not subscribed and doesn't have premium access
-    if btn and not await db.has_premium_access(message.from_user.id):
+    # Show subscription message if user is not subscribed (premium doesn't bypass force sub)
+    if btn:
         btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data=f"start_refresh_{grp_id}_{file_id}")])
         await message.reply_text(
             text="<b>🚫 ᴘʟᴇᴀꜱᴇ ꜱᴜʙꜱᴄʀɪʙᴇ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ.</b>",
@@ -1312,8 +1312,8 @@ async def refresh_start_callback(client, callback_query):
     if AUTH_REQ_CHANNELS:
         btn += await is_req_subscribed(client, user_id, AUTH_REQ_CHANNELS)
     
-    # If still not subscribed and no premium access
-    if btn and not await db.has_premium_access(user_id):
+    # If still not subscribed (force sub applies to all users)
+    if btn:
         btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data=f"start_refresh_{grp_id}_{file_id}")])
         await callback_query.answer("🚫 ꜱᴛɪʟʟ ɴᴏᴛ ꜱᴜʙꜱᴄʀɪʙᴇᴅ!", show_alert=True)
         await callback_query.message.edit_text(
