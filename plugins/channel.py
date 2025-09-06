@@ -365,9 +365,16 @@ async def _process_with_lock(bot, filename, caption, media_info, base_name, proc
     else:
         if any(f["filename"] == filename for f in movie_doc["files"]):
             return
+        # Update the document with new file and refresh aggregated data
         await db.movie_updates.update_one(
             {"_id": base_name},
-            {"$push": {"files": file_data}}
+            {
+                "$push": {"files": file_data},
+                "$set": {
+                    "ott_platform": media_info["ott_platform"],
+                    "last_updated": datetime.now()
+                }
+            }
         )
         movie_doc["files"].append(file_data)
         schedule_update(bot, base_name)
@@ -493,22 +500,37 @@ def generate_movie_message(movie_doc, base_name):
     all_tags = set()
     episodes_by_season = defaultdict(set)
 
+    # Process all files to collect unique qualities, languages, etc.
     for file in movie_doc["files"]:
-        if file["quality"] != "N/A":
-            all_qualities.update(q.strip() for q in file["quality"].split(",") if q.strip())
-        if file["language"] != "N/A":
-            all_languages.update(l.strip() for l in file["language"].split(",") if l.strip())
-        if file["ott_platform"] != "N/A":
+        # Extract qualities
+        if file.get("quality") and file["quality"] != "N/A":
+            qualities = [q.strip() for q in file["quality"].split(",") if q.strip()]
+            all_qualities.update(qualities)
+        
+        # Extract languages
+        if file.get("language") and file["language"] != "N/A":
+            languages = [l.strip() for l in file["language"].split(",") if l.strip()]
+            all_languages.update(languages)
+        
+        # Extract OTT platforms
+        if file.get("ott_platform") and file["ott_platform"] != "N/A":
             platforms = [p.strip() for p in file["ott_platform"].split("|") if p.strip()]
             all_ott_platforms.update(platforms)
-        if file["tag"]:
+        
+        # Extract tags
+        if file.get("tag"):
             all_tags.add(file["tag"])
+        
+        # Extract episodes for series
         if file.get("season") and file.get("episode"):
             season = file["season"]
             episode = file["episode"]
             episodes_by_season[season].add(episode)
 
+    # Determine primary tag
     primary_tag = "#SERIES" if "#SERIES" in all_tags else "#MOVIE"
+    
+    # Generate episode block for series
     epi_block = ""
     if episodes_by_season:
         episode_lines = []
@@ -546,13 +568,14 @@ def generate_movie_message(movie_doc, base_name):
         if epi_str:
             epi_block = f"📺 ᴇᴘɪsᴏᴅᴇs : <b>\n{epi_str}</b>"
 
+    # Prepare final strings
     genres = movie_doc.get("genres", "N/A")
     quality_str = ", ".join(sorted(all_qualities)) if all_qualities else "N/A"
     language_str = ", ".join(sorted(all_languages)) if all_languages else "N/A"
     ott_str = ", ".join(sorted(all_ott_platforms)) if all_ott_platforms else "N/A"
     rating = movie_doc.get("rating", "N/A")
 
-    # Fixed the template with correct variable names
+    # Build the message template
     return f"""
 ✨ ᴛɪᴛʟᴇ : <code>{base_name}</code>
 🎞️ ǫᴜᴀʟɪᴛʏ : <b>{quality_str}</b>
