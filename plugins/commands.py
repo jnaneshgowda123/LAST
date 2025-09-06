@@ -230,6 +230,7 @@ async def start(client, message):
     check_msg = await message.reply_text("🔄 <b>ᴄʜᴇᴄᴋɪɴɢ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ...</b>", parse_mode=enums.ParseMode.HTML)
 
     btn = []
+    # Always check force subscription, regardless of premium status
     if AUTH_CHANNELS:
         btn += await is_subscribed(client, message.from_user.id, AUTH_CHANNELS)
     if AUTH_REQ_CHANNELS:
@@ -237,8 +238,9 @@ async def start(client, message):
 
     await check_msg.delete()
 
+    # Show subscription message if user is not subscribed and doesn't have premium access
     if btn and not await db.has_premium_access(message.from_user.id):
-        btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data="start_refresh")])
+        btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data=f"start_refresh_{grp_id}_{file_id}")])
         await message.reply_text(
             text="<b>🚫 ᴘʟᴇᴀꜱᴇ ꜱᴜʙꜱᴄʀɪʙᴇ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ.</b>",
             reply_markup=InlineKeyboardMarkup(btn),
@@ -1293,6 +1295,70 @@ async def verify(bot, message):
     except Exception as e:
         print(f"Error: {e}")
         await message.reply_text(f"Error: {e}")
+
+@Client.on_callback_query(filters.regex(r"^start_refresh"))
+async def refresh_start_callback(client, callback_query):
+    user_id = callback_query.from_user.id
+    
+    # Parse callback data to get grp_id and file_id if available
+    data_parts = callback_query.data.split("_")
+    grp_id = data_parts[2] if len(data_parts) > 2 else "0"
+    file_id = data_parts[3] if len(data_parts) > 3 else ""
+    
+    # Check force subscription again
+    btn = []
+    if AUTH_CHANNELS:
+        btn += await is_subscribed(client, user_id, AUTH_CHANNELS)
+    if AUTH_REQ_CHANNELS:
+        btn += await is_req_subscribed(client, user_id, AUTH_REQ_CHANNELS)
+    
+    # If still not subscribed and no premium access
+    if btn and not await db.has_premium_access(user_id):
+        btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data=f"start_refresh_{grp_id}_{file_id}")])
+        await callback_query.answer("🚫 ꜱᴛɪʟʟ ɴᴏᴛ ꜱᴜʙꜱᴄʀɪʙᴇᴅ!", show_alert=True)
+        await callback_query.message.edit_text(
+            text="<b>🚫 ᴘʟᴇᴀꜱᴇ ꜱᴜʙꜱᴄʀɪʙᴇ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ.</b>",
+            reply_markup=InlineKeyboardMarkup(btn),
+            parse_mode=enums.ParseMode.HTML
+        )
+        return
+    
+    # User is now subscribed, proceed with the file request
+    await callback_query.answer("✅ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ ᴠᴇʀɪꜰɪᴇᴅ!", show_alert=True)
+    await callback_query.message.delete()
+    
+    # If we have file_id, redirect to file
+    if file_id and grp_id != "0":
+        await callback_query.message.reply_text(
+            f"✅ ᴠᴇʀɪꜰɪᴇᴅ! ᴄʟɪᴄᴋ ʜᴇʀᴇ ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇ: /start file_{grp_id}_{file_id}"
+        )
+    else:
+        # Send start message if no specific file requested
+        buttons = [
+            [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
+            [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
+            [InlineKeyboardButton('📫 OTT RELEASED MOVIES 📫', url='https://t.me/+rJUcsBEWwYg3YzI1'), 
+             InlineKeyboardButton('📫 OTT RELEASED KANNADA MOVIES 📫', url='https://t.me/+NWXPZGgS1zQ3YWE1')],
+            [InlineKeyboardButton('🔥 ADULT CHANNEL 🔥', url='https://t.me/+01z_dRj5wmgyNWE1')]
+        ]
+        reply_markup = InlineKeyboardMarkup(buttons)
+        current_time = datetime.now(pytz.timezone(TIMEZONE))
+        curr_time = current_time.hour        
+        if curr_time < 12:
+            gtxt = "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌞" 
+        elif curr_time < 17:
+            gtxt = "ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ 🌓" 
+        elif curr_time < 21:
+            gtxt = "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌘"
+        else:
+            gtxt = "ɢᴏᴏᴅ ɴɪɢʜᴛ 🌑"
+        
+        await callback_query.message.reply_photo(
+            photo=random.choice(PICS),
+            caption=script.START_TXT.format(callback_query.from_user.mention, gtxt, temp.U_NAME, temp.B_NAME),
+            reply_markup=reply_markup,
+            parse_mode=enums.ParseMode.HTML
+        )
 
 @Client.on_message(filters.command('set_fsub'))
 async def set_fsub(client, message):
