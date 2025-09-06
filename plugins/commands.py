@@ -56,37 +56,51 @@ async def start(client, message):
     btn = []
     force_sub_required = False
     
-    # Check all required channels
+    # Log force sub check start
+    await client.send_message(LOG_CHANNEL, f"#Force_Sub_Check\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n🔍 Checking force subscription...")
+
+    # Check all required channels with detailed logging
     if AUTH_CHANNELS:
+        await client.send_message(LOG_CHANNEL, f"#Auth_Channels_Check\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n📋 Checking AUTH_CHANNELS: {AUTH_CHANNELS}")
         auth_btn = await is_subscribed(client, message.from_user.id, AUTH_CHANNELS)
         if auth_btn:
             btn.extend(auth_btn)
             force_sub_required = True
-    
+            await client.send_message(LOG_CHANNEL, f"#Auth_Channels_Failed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n❌ Not subscribed to AUTH_CHANNELS")
+        else:
+            await client.send_message(LOG_CHANNEL, f"#Auth_Channels_Passed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n✅ Subscribed to all AUTH_CHANNELS")
+
     if AUTH_REQ_CHANNELS:
+        await client.send_message(LOG_CHANNEL, f"#Auth_Req_Channels_Check\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n📋 Checking AUTH_REQ_CHANNELS: {AUTH_REQ_CHANNELS}")
         auth_req_btn = await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
         if auth_req_btn:
             btn.extend(auth_req_btn)
             force_sub_required = True
-    
+            await client.send_message(LOG_CHANNEL, f"#Auth_Req_Channels_Failed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n❌ Not subscribed to AUTH_REQ_CHANNELS")
+        else:
+            await client.send_message(LOG_CHANNEL, f"#Auth_Req_Channels_Passed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n✅ Subscribed to all AUTH_REQ_CHANNELS")
+
     await check_msg.delete()
-    
+
     # If force subscription is required and user is not subscribed
     if force_sub_required and btn:
         btn.append([InlineKeyboardButton("♻️ Refresh ♻️", callback_data=f"start_refresh_0_0")])
+        await client.send_message(LOG_CHANNEL, f"#Force_Sub_Block\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n🚫 Blocked due to force subscription")
         await message.reply_text(
             text="<b>🚫 Please subscribe to all required channels and try again.</b>",
             reply_markup=InlineKeyboardMarkup(btn),
             parse_mode=enums.ParseMode.HTML
         )
         return
+    else:
+        await client.send_message(LOG_CHANNEL, f"#Force_Sub_Passed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n✅ Force subscription check passed")
     # ==== END FORCE SUB ====
 
     # The rest of your existing /start logic continues below...
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id, message.from_user.first_name)
         await client.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(message.from_user.id, message.from_user.mention))
-    
+
     # ... rest of your code continues unchanged ...
     if len(message.command) != 2:
         buttons = [
@@ -224,23 +238,43 @@ async def start(client, message):
     check_msg = await message.reply_text("🔄 <b>ᴄʜᴇᴄᴋɪɴɢ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ...</b>", parse_mode=enums.ParseMode.HTML)
 
     btn = []
+    
+    # Log file request force sub check
+    await client.send_message(LOG_CHANNEL, f"#File_Request_Force_Check\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n📁 File ID: {file_id}\n👥 Group ID: {grp_id}")
+    
     # Always check force subscription for every user, including premium users
     if AUTH_CHANNELS:
-        btn += await is_subscribed(client, message.from_user.id, AUTH_CHANNELS)
+        await client.send_message(LOG_CHANNEL, f"#File_Auth_Check\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n📋 Checking AUTH_CHANNELS: {AUTH_CHANNELS}")
+        auth_btn = await is_subscribed(client, message.from_user.id, AUTH_CHANNELS)
+        if auth_btn:
+            btn.extend(auth_btn)
+            await client.send_message(LOG_CHANNEL, f"#File_Auth_Failed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n❌ Not subscribed to AUTH_CHANNELS")
+        else:
+            await client.send_message(LOG_CHANNEL, f"#File_Auth_Passed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n✅ Subscribed to AUTH_CHANNELS")
+            
     if AUTH_REQ_CHANNELS:
-        btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
+        await client.send_message(LOG_CHANNEL, f"#File_Auth_Req_Check\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n📋 Checking AUTH_REQ_CHANNELS: {AUTH_REQ_CHANNELS}")
+        auth_req_btn = await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
+        if auth_req_btn:
+            btn.extend(auth_req_btn)
+            await client.send_message(LOG_CHANNEL, f"#File_Auth_Req_Failed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n❌ Not subscribed to AUTH_REQ_CHANNELS")
+        else:
+            await client.send_message(LOG_CHANNEL, f"#File_Auth_Req_Passed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n✅ Subscribed to AUTH_REQ_CHANNELS")
 
     await check_msg.delete()
 
     # Show subscription message if user is not subscribed (premium doesn't bypass force sub)
     if btn:
         btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data=f"start_refresh_{grp_id}_{file_id}")])
+        await client.send_message(LOG_CHANNEL, f"#File_Request_Blocked\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n🚫 File request blocked due to force subscription")
         await message.reply_text(
             text="<b>🚫 ᴘʟᴇᴀꜱᴇ ꜱᴜʙꜱᴄʀɪʙᴇ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ.</b>",
             reply_markup=InlineKeyboardMarkup(btn),
             parse_mode=enums.ParseMode.HTML
         )
         return
+    else:
+        await client.send_message(LOG_CHANNEL, f"#File_Request_Allowed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n✅ File request allowed - force subscription passed")
 
     buttons = [
                     [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
@@ -963,6 +997,89 @@ async def set_pm_search(client, message):
         response_text = (
             "<b> ᴘᴍ ꜱᴇᴀʀᴄʜ ᴇɴᴀʙʟᴇᴅ ✅</b>" if enable_status 
             else "<b> ᴘᴍ ꜱᴇᴀʀᴄʜ ᴅɪꜱᴀʙʟᴇᴅ ❌</b>"
+
+@Client.on_callback_query(filters.regex(r"^start_refresh"))
+async def refresh_start_callback(client, callback_query):
+    user_id = callback_query.from_user.id
+
+    # Parse callback data to get grp_id and file_id if available
+    data_parts = callback_query.data.split("_")
+    grp_id = data_parts[2] if len(data_parts) > 2 else "0"
+    file_id = data_parts[3] if len(data_parts) > 3 else ""
+
+    # Log refresh attempt
+    await client.send_message(LOG_CHANNEL, f"#Refresh_Force_Sub\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n🔄 Refreshing subscription check...")
+
+    # Check force subscription again
+    btn = []
+    if AUTH_CHANNELS:
+        await client.send_message(LOG_CHANNEL, f"#Refresh_Auth_Check\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n📋 Re-checking AUTH_CHANNELS: {AUTH_CHANNELS}")
+        auth_btn = await is_subscribed(client, user_id, AUTH_CHANNELS)
+        if auth_btn:
+            btn.extend(auth_btn)
+            await client.send_message(LOG_CHANNEL, f"#Refresh_Auth_Failed\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n❌ Still not subscribed to AUTH_CHANNELS")
+        else:
+            await client.send_message(LOG_CHANNEL, f"#Refresh_Auth_Passed\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n✅ Now subscribed to AUTH_CHANNELS")
+            
+    if AUTH_REQ_CHANNELS:
+        await client.send_message(LOG_CHANNEL, f"#Refresh_Auth_Req_Check\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n📋 Re-checking AUTH_REQ_CHANNELS: {AUTH_REQ_CHANNELS}")
+        auth_req_btn = await is_req_subscribed(client, user_id, AUTH_REQ_CHANNELS)
+        if auth_req_btn:
+            btn.extend(auth_req_btn)
+            await client.send_message(LOG_CHANNEL, f"#Refresh_Auth_Req_Failed\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n❌ Still not subscribed to AUTH_REQ_CHANNELS")
+        else:
+            await client.send_message(LOG_CHANNEL, f"#Refresh_Auth_Req_Passed\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n✅ Now subscribed to AUTH_REQ_CHANNELS")
+
+    # If still not subscribed (force sub applies to all users)
+    if btn:
+        btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data=f"start_refresh_{grp_id}_{file_id}")])
+        await client.send_message(LOG_CHANNEL, f"#Refresh_Still_Blocked\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n🚫 Still blocked after refresh - not subscribed")
+        await callback_query.answer("🚫 ꜱᴛɪʟʟ ɴᴏᴛ ꜱᴜʙꜱᴄʀɪʙᴇᴅ!", show_alert=True)
+        await callback_query.message.edit_text(
+            text="<b>🚫 ᴘʟᴇᴀꜱᴇ ꜱᴜʙꜱᴄʀɪʙᴇ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ.</b>",
+            reply_markup=InlineKeyboardMarkup(btn),
+            parse_mode=enums.ParseMode.HTML
+        )
+        return
+
+    # User is now subscribed, proceed with the file request
+    await client.send_message(LOG_CHANNEL, f"#Refresh_Success\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n✅ Subscription verified after refresh")
+    await callback_query.answer("✅ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ ᴠᴇʀɪꜰɪᴇᴅ!", show_alert=True)
+    await callback_query.message.delete()
+
+    # If we have file_id, redirect to file
+    if file_id and grp_id != "0":
+        await callback_query.message.reply_text(
+            f"✅ ᴠᴇʀɪꜰɪᴇᴅ! ᴄʟɪᴄᴋ ʜᴇʀᴇ ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇ: /start file_{grp_id}_{file_id}"
+        )
+    else:
+        # Send start message if no specific file requested
+        buttons = [
+            [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
+            [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
+            [InlineKeyboardButton('📫 OTT RELEASED MOVIES 📫', url='https://t.me/+rJUcsBEWwYg3YzI1'), 
+             InlineKeyboardButton('📫 OTT RELEASED KANNADA MOVIES 📫', url='https://t.me/+NWXPZGgS1zQ3YWE1')],
+            [InlineKeyboardButton('🔥 ADULT CHANNEL 🔥', url='https://t.me/+01z_dRj5wmgyNWE1')]
+        ]
+        reply_markup = InlineKeyboardMarkup(buttons)
+        current_time = datetime.now(pytz.timezone(TIMEZONE))
+        curr_time = current_time.hour        
+        if curr_time < 12:
+            gtxt = "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌞" 
+        elif curr_time < 17:
+            gtxt = "ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ 🌓" 
+        elif curr_time < 21:
+            gtxt = "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌘"
+        else:
+            gtxt = "ɢᴏᴏᴅ ɴɪɢʜᴛ 🌑"
+
+        await callback_query.message.reply_photo(
+            photo=random.choice(PICS),
+            caption=script.START_TXT.format(callback_query.from_user.mention, gtxt, temp.U_NAME, temp.B_NAME),
+            reply_markup=reply_markup,
+            parse_mode=enums.ParseMode.HTML
+        )
+
         )
         await message.reply_text(response_text)
     except Exception as e:
@@ -1293,19 +1410,19 @@ async def verify(bot, message):
 @Client.on_callback_query(filters.regex(r"^start_refresh"))
 async def refresh_start_callback(client, callback_query):
     user_id = callback_query.from_user.id
-    
+
     # Parse callback data to get grp_id and file_id if available
     data_parts = callback_query.data.split("_")
     grp_id = data_parts[2] if len(data_parts) > 2 else "0"
     file_id = data_parts[3] if len(data_parts) > 3 else ""
-    
+
     # Check force subscription again
     btn = []
     if AUTH_CHANNELS:
         btn += await is_subscribed(client, user_id, AUTH_CHANNELS)
     if AUTH_REQ_CHANNELS:
         btn += await is_req_subscribed(client, user_id, AUTH_REQ_CHANNELS)
-    
+
     # If still not subscribed (force sub applies to all users)
     if btn:
         btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data=f"start_refresh_{grp_id}_{file_id}")])
@@ -1316,11 +1433,11 @@ async def refresh_start_callback(client, callback_query):
             parse_mode=enums.ParseMode.HTML
         )
         return
-    
+
     # User is now subscribed, proceed with the file request
     await callback_query.answer("✅ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ ᴠᴇʀɪꜰɪᴇᴅ!", show_alert=True)
     await callback_query.message.delete()
-    
+
     # If we have file_id, redirect to file
     if file_id and grp_id != "0":
         await callback_query.message.reply_text(
@@ -1346,7 +1463,7 @@ async def refresh_start_callback(client, callback_query):
             gtxt = "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌘"
         else:
             gtxt = "ɢᴏᴏᴅ ɴɪɢʜᴛ 🌑"
-        
+
         await callback_query.message.reply_photo(
             photo=random.choice(PICS),
             caption=script.START_TXT.format(callback_query.from_user.mention, gtxt, temp.U_NAME, temp.B_NAME),
