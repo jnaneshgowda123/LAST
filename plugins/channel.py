@@ -33,41 +33,9 @@ IGNORE_WORDS = {
     "japanese", "nf", "netflix", "sonyliv", "sony", "sliv", "amzn", "prime", 
     "primevideo", "hotstar", "zee5", "jio", "jhs", "aha", "hbo", "paramount", 
     "apple", "hoichoi", "sunnxt", "viki", "@FilmyHub4u_Official", "[@FilmyHub4u_Official]",
-    "[ 𝐓𝐆 :- @FilmRooM07 ]", "[]", "[", "]", "[MS]", "Official"
-} | BAD_WORDS
-
-# Helper function to extract language from text
-def extract_language_from_text(text):
-    if not text:
-        return "N/A"
-    text = text.lower()
-    found_languages = []
-    for key, value in CAPTION_LANGUAGES.items():
-        if key in text:
-            found_languages.append(value)
-    return ", ".join(sorted(set(found_languages))) if found_languages else "N/A"
-
-# Enhanced function to remove ignored words and bad words
-def remove_bad_words_and_ignored(text):
-    words = text.split()
-    cleaned_words = []
-    
-    for word in words:
-        # Convert to lowercase for comparison
-        word_lower = word.lower()
-        
-        # Check if word contains any bad word or ignored word
-        is_bad = False
-        for bad_word in IGNORE_WORDS:
-            if bad_word.lower() in word_lower:
-                is_bad = True
-                break
-        
-        # Only keep word if it's not bad and has meaningful length
-        if not is_bad and len(word.strip()) > 1:
-            cleaned_words.append(word)
-    
-    return " ".join(cleaned_words)
+    "[ 𝐓𝐆 :- @FilmRooM07 ]", "[]", "[", "]", "[MS]", "Official", "@shetty_moviez1 -",
+    "@RM_Movie_Flix - - "
+}|BAD_WORDS
 
 # Constants
 CAPTION_LANGUAGES = {
@@ -122,9 +90,6 @@ MEDIA_FILTER = filters.document | filters.video | filters.audio
 locks = defaultdict(asyncio.Lock)
 pending_updates = {}
 
-# Initialize movie_updates collection
-if not hasattr(db, 'movie_updates'):
-    db.movie_updates = db.db.movie_updates
 
 def clean_mentions_links(text: str) -> str:
     return CLEAN_PATTERN.sub("", text or "").strip()
@@ -134,8 +99,8 @@ def normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 def remove_ignored_words(text: str) -> str:
-    # Use the enhanced bad words removal function
-    return remove_bad_words_and_ignored(text)
+    IGNORE_WORDS_LOWER = {w.lower() for w in IGNORE_WORDS}
+    return " ".join(word for word in text.split() if word.lower() not in IGNORE_WORDS_LOWER)
 
 def get_qualities(text: str) -> str:
     qualities = QUALITY_PATTERN.findall(text)
@@ -171,19 +136,8 @@ def schedule_update(bot, base_name, delay=5):
     )
 
 def extract_media_info(filename: str, caption: str):
-    # Step 1: Clean mentions and links
-    filename_cleaned = clean_mentions_links(filename)
-    
-    # Step 2: Remove bad words and ignored words
-    filename_cleaned = remove_bad_words_and_ignored(filename_cleaned)
-    
-    # Step 3: Normalize the cleaned filename
-    filename = normalize(filename_cleaned.title())
-    
+    filename = normalize(clean_mentions_links(filename).title())
     caption_clean = clean_mentions_links(caption).lower() if caption else ""
-    # Also clean caption from bad words
-    caption_clean = remove_bad_words_and_ignored(caption_clean)
-    
     unified = f"{caption_clean} {filename.lower()}".strip()
 
     season = episode = year = None
@@ -283,9 +237,12 @@ async def process_and_send_update(bot, filename, caption):
         logger.exception("Processing failed: %s", e)
 
 async def _process_with_lock(bot, filename, caption, media_info, base_name, processed):
+    if not hasattr(db, 'movie_updates'):
+        db.movie_updates = db.db.movie_updates
+
+    movie_doc = await db.movie_updates.find_one({"_id": base_name})
     global error_tmdb
-    error_tmdb = False
-    
+    error_tmdb=False
     file_data = {
         "filename": filename,
         "processed": processed,
@@ -298,26 +255,23 @@ async def _process_with_lock(bot, filename, caption, media_info, base_name, proc
         "episode": media_info["episode"]
     }
 
-    movie_doc = await db.movie_updates.find_one({"_id": base_name})
-    
     if not movie_doc:
-        # Skip fetching poster details since we're not using posters
+        # Skip fetching poster details since we won't use them
         details = {}
-        
+        genres = "N/A"
         movie_doc = {
             "_id": base_name,
             "files": [file_data],
-            "poster_url": None,  # Set to None to avoid poster
-            "genres": "N/A",
+            "poster_url": None,  # Set to None to avoid using poster
+            "genres": genres,
             "rating": "N/A",
             "imdb_url": "",
             "year": media_info["year"],
             "tag": media_info["tag"],
             "ott_platform": media_info["ott_platform"],
             "message_id": None,
-            "is_photo": False
+            "is_photo": False  # Always set to False to send as text message
         }
-        
         try:
             await db.movie_updates.insert_one(movie_doc)
             await send_movie_update(bot, base_name)
@@ -334,26 +288,11 @@ async def _process_with_lock(bot, filename, caption, media_info, base_name, proc
                 movie_doc["files"].append(file_data)
                 schedule_update(bot, base_name)
     else:
-        # Check if exact same file already exists (by filename and quality)
-        existing_file = None
-        for f in movie_doc["files"]:
-            if f["filename"] == filename and f["quality"] == media_info["quality"]:
-                existing_file = f
-                break
-        
-        if existing_file:
-            return  # Exact same file already exists
-        
-        # Add new file variant (different quality/audio for same movie)
+        if any(f["filename"] == filename for f in movie_doc["files"]):
+            return
         await db.movie_updates.update_one(
             {"_id": base_name},
-            {
-                "$push": {"files": file_data},
-                "$set": {
-                    "ott_platform": media_info["ott_platform"],
-                    "last_updated": datetime.now()
-                }
-            }
+            {"$push": {"files": file_data}}
         )
         movie_doc["files"].append(file_data)
         schedule_update(bot, base_name)
@@ -361,12 +300,6 @@ async def _process_with_lock(bot, filename, caption, media_info, base_name, proc
 async def send_movie_update(bot, base_name):
     max_retries = 3
     base_delay = 5
-    
-    # Check if MOVIE_UPDATE_CHANNEL is valid
-    if not MOVIE_UPDATE_CHANNEL:
-        logger.error("MOVIE_UPDATE_CHANNEL is not configured")
-        return None
-    
     for attempt in range(max_retries):
         try:
             movie_doc = await db.movie_updates.find_one({"_id": base_name})
@@ -389,7 +322,7 @@ async def send_movie_update(bot, base_name):
                 ]
             ])
 
-            # Always send as text message without photo
+            # Always send as text message without poster
             send_params = {
                 "chat_id": MOVIE_UPDATE_CHANNEL,
                 "text": text,
@@ -479,54 +412,22 @@ def generate_movie_message(movie_doc, base_name):
     all_tags = set()
     episodes_by_season = defaultdict(set)
 
-    # Process all files to collect unique qualities, languages, etc.
     for file in movie_doc["files"]:
-        # Extract qualities from both quality field and filename
-        quality_sources = []
-        if file.get("quality") and file["quality"] != "N/A":
-            quality_sources.append(file["quality"])
-        # Also extract from filename
-        filename = file.get("filename", "")
-        filename_qualities = get_qualities(filename)
-        if filename_qualities != "N/A":
-            quality_sources.append(filename_qualities)
-        
-        for quality_source in quality_sources:
-            qualities = [q.strip() for q in quality_source.split(",") if q.strip()]
-            all_qualities.update(qualities)
-        
-        # Extract languages from both language field and filename/caption
-        language_sources = []
-        if file.get("language") and file["language"] != "N/A":
-            language_sources.append(file["language"])
-        # Also extract from filename
-        filename_language = extract_language_from_text(filename)
-        if filename_language != "N/A":
-            language_sources.append(filename_language)
-            
-        for language_source in language_sources:
-            languages = [l.strip() for l in language_source.split(",") if l.strip()]
-            all_languages.update(languages)
-        
-        # Extract OTT platforms
-        if file.get("ott_platform") and file["ott_platform"] != "N/A":
+        if file["quality"] != "N/A":
+            all_qualities.update(q.strip() for q in file["quality"].split(",") if q.strip())
+        if file["language"] != "N/A":
+            all_languages.update(l.strip() for l in file["language"].split(",") if l.strip())
+        if file["ott_platform"] != "N/A":
             platforms = [p.strip() for p in file["ott_platform"].split("|") if p.strip()]
             all_ott_platforms.update(platforms)
-        
-        # Extract tags
-        if file.get("tag"):
+        if file["tag"]:
             all_tags.add(file["tag"])
-        
-        # Extract episodes for series
         if file.get("season") and file.get("episode"):
             season = file["season"]
             episode = file["episode"]
             episodes_by_season[season].add(episode)
 
-    # Determine primary tag
     primary_tag = "#SERIES" if "#SERIES" in all_tags else "#MOVIE"
-    
-    # Generate episode block for series
     epi_block = ""
     if episodes_by_season:
         episode_lines = []
@@ -564,28 +465,20 @@ def generate_movie_message(movie_doc, base_name):
         if epi_str:
             epi_block = f"📺 ᴇᴘɪsᴏᴅᴇs : <b>\n{epi_str}</b>"
 
-    # Prepare final strings with better formatting
     genres = movie_doc.get("genres", "N/A")
-    
-    # Enhanced quality string - remove duplicates and clean up, prioritize higher qualities
-    quality_priorities = {"2160p": 6, "4k": 6, "1440p": 5, "1080p": 4, "720p": 3, "480p": 2, "360p": 1}
-    sorted_qualities = sorted(all_qualities, key=lambda x: quality_priorities.get(x.lower(), 0), reverse=True)
-    quality_str = ", ".join(sorted_qualities) if sorted_qualities else "N/A"
-    
-    # Enhanced language string - remove duplicates and clean up
-    language_list = sorted(set([l for l in all_languages if l and l.strip()]))
-    language_str = ", ".join(language_list) if language_list else "N/A"
-    
+    quality_str = ", ".join(sorted(all_qualities)) if all_qualities else "N/A"
+    language_str = ", ".join(sorted(all_languages)) if all_languages else "N/A"
     ott_str = ", ".join(sorted(all_ott_platforms)) if all_ott_platforms else "N/A"
-    rating = movie_doc.get("rating", "N/A")
 
-    # Build the message template with emojis preserved and improved quality/audio display
-    return f"""
-✨ ᴛɪᴛʟᴇ : <code>{base_name}</code>
-🎭 ɢᴇɴʀᴇs : <b>{genres}</b>
-🎞️ ǫᴜᴀʟɪᴛʏ : <b>{quality_str}</b>
-🎧 ᴀᴜᴅɪᴏ : <b>{language_str}</b>
-🔥 ʀᴀᴛɪɴɢ : <b>{rating}</b>
-{epi_block if epi_block else ""}
-<blockquote>©️@JNK_BACKUP</blockquote>
-""".strip()
+    # Remove poster_url and imdb_url references from the message
+    return script.MOVIE_UPDATE_NOTIFY_TXT_NO_POSTER.format(
+        filename=base_name,
+        tag=primary_tag,
+        genres=genres,
+        ott=ott_str,
+        quality=quality_str,
+        language=language_str,
+        episodes=epi_block,
+        rating=movie_doc.get("rating", "N/A"),
+        search_link=temp.B_LINK
+    )
