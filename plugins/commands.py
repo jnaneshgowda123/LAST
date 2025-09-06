@@ -226,26 +226,25 @@ async def start(client, message):
     except:
         _, grp_id, file_id = "", 0, data
 
-    # Check force subscription for start command
-    if not await db.has_premium_access(message.from_user.id):
-        check_msg = await message.reply_text("🔄 <b>ᴄʜᴇᴄᴋɪɴɢ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ...</b>", parse_mode=enums.ParseMode.HTML)
+    # Check force subscription for start command every time
+    check_msg = await message.reply_text("🔄 <b>ᴄʜᴇᴄᴋɪɴɢ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ...</b>", parse_mode=enums.ParseMode.HTML)
 
-        btn = []
-        if AUTH_CHANNELS:
-            btn += await is_subscribed(client, message.from_user.id, AUTH_CHANNELS)
-        if AUTH_REQ_CHANNELS:
-            btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
+    btn = []
+    if AUTH_CHANNELS:
+        btn += await is_subscribed(client, message.from_user.id, AUTH_CHANNELS)
+    if AUTH_REQ_CHANNELS:
+        btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
 
-        await check_msg.delete()
+    await check_msg.delete()
 
-        if btn:
-            btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data="start_refresh")])
-            await message.reply_text(
-                text="<b>🚫 ᴘʟᴇᴀꜱᴇ ꜱᴜʙꜱᴄʀɪʙᴇ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ.</b>",
-                reply_markup=InlineKeyboardMarkup(btn),
-                parse_mode=enums.ParseMode.HTML
-            )
-            return
+    if btn and not await db.has_premium_access(message.from_user.id):
+        btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data="start_refresh")])
+        await message.reply_text(
+            text="<b>🚫 ᴘʟᴇᴀꜱᴇ ꜱᴜʙꜱᴄʀɪʙᴇ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ.</b>",
+            reply_markup=InlineKeyboardMarkup(btn),
+            parse_mode=enums.ParseMode.HTML
+        )
+        return
 
     buttons = [
                     [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
