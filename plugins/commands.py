@@ -20,6 +20,8 @@ from database.users_chats_db import db
 from info import *
 from utils import get_settings, save_group_settings, is_subscribed, is_req_subscribed, get_size, get_shortlink, is_check_admin, temp, get_readable_time, get_time, generate_settings_text, log_error, clean_filename
 
+
+
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
@@ -34,8 +36,49 @@ async def start(client, message):
         except Exception:
             await message.react(emoji="⚡️", big=True)
     m = message
-
-    # Group check (unchanged)
+    if len(m.command) == 2 and m.command[1].startswith(('notcopy', 'sendall')):
+        _, userid, verify_id, file_id = m.command[1].split("_", 3)
+        user_id = int(userid)
+        grp_id = temp.VERIFICATIONS.get(user_id, 0)
+        settings = await get_settings(grp_id)         
+        verify_id_info = await db.get_verify_id_info(user_id, verify_id)
+        if not verify_id_info or verify_id_info["verified"]:
+            return await message.reply("<b>ʟɪɴᴋ ᴇxᴘɪʀᴇᴅ ᴛʀʏ ᴀɢᴀɪɴ...</b>")  
+        
+        ist_timezone = pytz.timezone('Asia/Kolkata')
+        if await db.user_verified(user_id):
+            key = "third_time_verified"
+        else:
+            key = "second_time_verified" if await db.is_user_verified(user_id) else "last_verified"
+        current_time = datetime.now(tz=ist_timezone)
+        result = await db.update_notcopy_user(user_id, {key:current_time})
+        await db.update_verify_id_info(user_id, verify_id, {"verified":True})
+        if key == "third_time_verified": 
+            num = 3 
+        else: 
+            num =  2 if key == "second_time_verified" else 1 
+        if key == "third_time_verified": 
+            msg = script.THIRDT_VERIFY_COMPLETE_TEXT
+        else:
+            msg = script.SECOND_VERIFY_COMPLETE_TEXT if key == "second_time_verified" else script.VERIFY_COMPLETE_TEXT
+        if message.command[1].startswith('sendall'):
+            verifiedfiles = f"https://telegram.me/{temp.U_NAME}?start=allfiles_{grp_id}_{file_id}"
+        else:
+            verifiedfiles = f"https://telegram.me/{temp.U_NAME}?start=file_{grp_id}_{file_id}"
+        await client.send_message(settings['log'], script.VERIFIED_LOG_TEXT.format(m.from_user.mention, user_id, datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %B %Y'), num))
+        btn = [[
+            InlineKeyboardButton("✅ ᴄʟɪᴄᴋ ʜᴇʀᴇ ᴛᴏ ɢᴇᴛ ꜰɪʟᴇ ✅", url=verifiedfiles),
+        ]]
+        reply_markup=InlineKeyboardMarkup(btn)
+        dlt=await m.reply_photo(
+            photo=(VERIFY_IMG),
+            caption=msg.format(message.from_user.mention, get_readable_time(TWO_VERIFY_GAP)),
+            reply_markup=reply_markup,
+            parse_mode=enums.ParseMode.HTML
+        )
+        await asyncio.sleep(300)
+        await dlt.delete()
+        return         
     if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         buttons = [[
                     InlineKeyboardButton('❤️ ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ ❤️', url=f'http://t.me/{temp.U_NAME}?startgroup=true')
@@ -50,66 +93,19 @@ async def start(client, message):
             await client.send_message(LOG_CHANNEL, script.LOG_TEXT_G.format(message.chat.title, message.chat.id, total, "Unknown"))       
             await db.add_chat(message.chat.id, message.chat.title)
         return 
-
-    # ==== FORCE SUBSCRIPTION CHECK FOR ALL /START ====
-    check_msg = await message.reply_text("🔄 <b>Checking subscription...</b>", parse_mode=enums.ParseMode.HTML)
-    btn = []
-    force_sub_required = False
-    
-    # Log force sub check start
-    await client.send_message(LOG_CHANNEL, f"#Force_Sub_Check\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n🔍 Checking force subscription...")
-
-    # Check all required channels with detailed logging
-    if AUTH_CHANNELS:
-        await client.send_message(LOG_CHANNEL, f"#Auth_Channels_Check\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n📋 Checking AUTH_CHANNELS: {AUTH_CHANNELS}")
-        auth_btn = await is_subscribed(client, message.from_user.id, AUTH_CHANNELS)
-        if auth_btn:
-            btn.extend(auth_btn)
-            force_sub_required = True
-            await client.send_message(LOG_CHANNEL, f"#Auth_Channels_Failed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n❌ Not subscribed to AUTH_CHANNELS")
-        else:
-            await client.send_message(LOG_CHANNEL, f"#Auth_Channels_Passed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n✅ Subscribed to all AUTH_CHANNELS")
-
-    if AUTH_REQ_CHANNELS:
-        await client.send_message(LOG_CHANNEL, f"#Auth_Req_Channels_Check\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n📋 Checking AUTH_REQ_CHANNELS: {AUTH_REQ_CHANNELS}")
-        auth_req_btn = await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
-        if auth_req_btn:
-            btn.extend(auth_req_btn)
-            force_sub_required = True
-            await client.send_message(LOG_CHANNEL, f"#Auth_Req_Channels_Failed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n❌ Not subscribed to AUTH_REQ_CHANNELS")
-        else:
-            await client.send_message(LOG_CHANNEL, f"#Auth_Req_Channels_Passed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n✅ Subscribed to all AUTH_REQ_CHANNELS")
-
-    await check_msg.delete()
-
-    # If force subscription is required and user is not subscribed
-    if force_sub_required and btn:
-        btn.append([InlineKeyboardButton("♻️ Refresh ♻️", callback_data=f"start_refresh_0_0")])
-        await client.send_message(LOG_CHANNEL, f"#Force_Sub_Block\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n🚫 Blocked due to force subscription")
-        await message.reply_text(
-            text="<b>🚫 Please subscribe to all required channels and try again.</b>",
-            reply_markup=InlineKeyboardMarkup(btn),
-            parse_mode=enums.ParseMode.HTML
-        )
-        return
-    else:
-        await client.send_message(LOG_CHANNEL, f"#Force_Sub_Passed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n✅ Force subscription check passed")
-    # ==== END FORCE SUB ====
-
-    # The rest of your existing /start logic continues below...
     if not await db.is_user_exist(message.from_user.id):
         await db.add_user(message.from_user.id, message.from_user.first_name)
         await client.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(message.from_user.id, message.from_user.mention))
-
-    # ... rest of your code continues unchanged ...
     if len(message.command) != 2:
-        buttons = [
-                        [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
-                        [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
-                        [InlineKeyboardButton('📫 OTT RELEASED MOVIES 📫', url='https://t.me/+rJUcsBEWwYg3YzI1'), 
-                         InlineKeyboardButton('📫 OTT RELEASED KANNADA MOVIES 📫', url='https://t.me/+NWXPZGgS1zQ3YWE1')],
-                        [InlineKeyboardButton('🔥 ADULT CHANNEL 🔥', url='https://t.me/+01z_dRj5wmgyNWE1')]
-                    ]
+        buttons = [[
+                    InlineKeyboardButton('🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ 🔰', url=f'http://telegram.me/{temp.U_NAME}?startgroup=true')
+                ],[
+                    InlineKeyboardButton(' ʜᴇʟᴘ 📢', callback_data='help'),
+                    InlineKeyboardButton(' ᴀʙᴏᴜᴛ 📖', callback_data='about')
+                ],[
+                    InlineKeyboardButton('ᴛᴏᴘ sᴇᴀʀᴄʜɪɴɢ ⭐', callback_data="topsearch"),
+                    InlineKeyboardButton('ᴜᴘɢʀᴀᴅᴇ 🎟', callback_data="premium_info"),
+                ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         current_time = datetime.now(pytz.timezone(TIMEZONE))
         curr_time = current_time.hour        
@@ -132,16 +128,16 @@ async def start(client, message):
         )
         return
 
-    # ... rest of your file remains unchanged ...
-
     if len(message.command) == 2 and message.command[1] in ["subscribe", "error", "okay", "help"]:
-        buttons = [
-                        [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
-                        [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
-                        [InlineKeyboardButton('📫 OTT RELEASED MOVIES 📫', url='https://t.me/+rJUcsBEWwYg3YzI1'), 
-                         InlineKeyboardButton('📫 OTT RELEASED KANNADA MOVIES 📫', url='https://t.me/+NWXPZGgS1zQ3YWE1')],
-                        [InlineKeyboardButton('🔥 ADULT CHANNEL 🔥', url='https://t.me/+01z_dRj5wmgyNWE1')]
-                    ]
+        buttons = [[
+                    InlineKeyboardButton('🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ 🔰', url=f'http://telegram.me/{temp.U_NAME}?startgroup=true')
+                ],[
+                    InlineKeyboardButton(' ʜᴇʟᴘ 📢', callback_data='help'),
+                    InlineKeyboardButton(' ᴀʙᴏᴜᴛ 📖', callback_data='about')
+                ],[
+                    InlineKeyboardButton('ᴛᴏᴘ sᴇᴀʀᴄʜɪɴɢ ⭐', callback_data="topsearch"),
+                    InlineKeyboardButton('ᴜᴘɢʀᴀᴅᴇ 🎟', callback_data="premium_info"),
+                ]]
         reply_markup = InlineKeyboardMarkup(buttons)
         current_time = datetime.now(pytz.timezone(TIMEZONE))
         curr_time = current_time.hour        
@@ -186,7 +182,7 @@ async def start(client, message):
         fromuse = referdb.get_refer_points(user_id) + 10
         if fromuse == 100:
             referdb.add_refer_points(user_id, 0) 
-            await message.reply_text(f"🎉 𝗖𝗼𝗻𝗴𝗿𝗮𝘁𝘂𝗹𝗮𝘁𝗶𝗼𝗻𝘀! 𝗬𝗼𝘂 𝘄𝗼𝗻 10 𝗥𝗲𝗳𝗲𝗿𝗿𝗮𝗹 𝗽𝗼𝗶𝗻𝘁 𝗯𝗲𝗰𝗮𝘂𝘀𝗲 𝗬𝗼𝘂 𝗵𝗮𝘃𝗲 𝗯𝗲𝗲𝗻 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆 𝗜𝗻𝘃𝗶𝘁𝗲𝗱 ☞ {uss.mention}!")		    
+            await message.reply_text(f"🎉 𝗖𝗼𝗻𝗴𝗿𝗮𝘁𝘂𝗹𝗮𝘁𝗶𝗼𝗻𝘀! 𝗬𝗼𝘂 𝘄𝗼𝗻 𝟭𝟬 𝗥𝗲𝗳𝗲𝗿𝗿𝗮𝗹 𝗽𝗼𝗶𝗻𝘁 𝗯𝗲𝗰𝗮𝘂𝘀𝗲 𝗬𝗼𝘂 𝗵𝗮𝘃𝗲 𝗯𝗲𝗲𝗻 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆 𝗜𝗻𝘃𝗶𝘁𝗲𝗱 ☞ {uss.mention}!")		    
             await message.reply_text(user_id, f"You have been successfully invited by {message.from_user.mention}!") 	
             seconds = 2592000
             if seconds > 0:
@@ -198,13 +194,13 @@ async def start(client, message):
                 text=f"<b>Hᴇʏ {uss.mention}\n\nYᴏᴜ ɢᴏᴛ 1 ᴍᴏɴᴛʜ ᴘʀᴇᴍɪᴜᴍ sᴜʙsᴄʀɪᴘᴛɪᴏɴ ʙʏ ɪɴᴠɪᴛɪɴɢ 10 ᴜsᴇʀs ❗", disable_web_page_preview=True              
                 )
             for admin in ADMINS:
-                await client.send_message(chat_id=admin, text=f"Sᴜᴄᴄᴇss ғᴜʟʟ ᴛᴀsᴋ ᴄᴏᴍᴘʟᴇᴛᴇᴅ ʙʏ ᴛʜɪs ᴜsᴇʀ:\n\nuser Nᴀᴍᴇ: {uss.mention}\n\nUsᴇʀ ɪᴅ: {uss.id}!")	
+                await client.send_message(chat_id=admin, text=f"Sᴜᴄᴄᴇss ғᴜʟʟʏ ᴛᴀsᴋ ᴄᴏᴍᴘʟᴇᴛᴇᴅ ʙʏ ᴛʜɪs ᴜsᴇʀ:\n\nuser Nᴀᴍᴇ: {uss.mention}\n\nUsᴇʀ ɪᴅ: {uss.id}!")	
         else:
             referdb.add_refer_points(user_id, fromuse)
             await message.reply_text(f"You have been successfully invited by {uss.mention}!")
-            await client.send_message(user_id, f"𝗖𝗼𝗻𝗴𝗿𝗮𝘁𝘂𝗹𝗮𝘁𝗶𝗼𝗻𝘀! 𝗬𝗼𝘂 𝘄𝗼𝗻 10 𝗥𝗲𝗳𝗲𝗿𝗿𝗮𝗹 𝗽𝗼𝗶𝗻𝘁 𝗯𝗲𝗰𝗮𝘂𝘀𝗲 𝗬𝗼𝘂 𝗵𝗮𝘃𝗲 𝗯𝗲𝗲𝗻 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆 𝗜𝗻𝘃𝗶𝘁𝗲𝗱 ☞{message.from_user.mention}!")
+            await client.send_message(user_id, f"𝗖𝗼𝗻𝗴𝗿𝗮𝘁𝘂𝗹𝗮𝘁𝗶𝗼𝗻𝘀! 𝗬𝗼𝘂 𝘄𝗼𝗻 𝟭𝟬 𝗥𝗲𝗳𝗲𝗿𝗿𝗮𝗹 𝗽𝗼𝗶𝗻𝘁 𝗯𝗲𝗰𝗮𝘂𝘀𝗲 𝗬𝗼𝘂 𝗵𝗮𝘃𝗲 𝗯𝗲𝗲𝗻 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆 𝗜𝗻𝘃𝗶𝘁𝗲𝗱 ☞{message.from_user.mention}!")
         return
-
+        
     if len(message.command) == 2 and message.command[1] in ["premium"]:
         buttons = [[
                     InlineKeyboardButton('📲 ꜱᴇɴᴅ ᴘᴀʏᴍᴇɴᴛ ꜱᴄʀᴇᴇɴꜱʜᴏᴛ', url=OWNER_LNK)
@@ -219,14 +215,14 @@ async def start(client, message):
             parse_mode=enums.ParseMode.HTML
         )
         return  
-
+    
     if len(message.command) == 2 and message.command[1].startswith('getfile'):
         movies = message.command[1].split("-", 1)[1] 
         movie = movies.replace('-',' ')
         message.text = movie 
         await auto_filter(client, message) 
         return
-
+    
     data = message.command[1]
     try:
         _, grp_id, file_id = data.split("_", 2)
@@ -234,55 +230,41 @@ async def start(client, message):
     except:
         _, grp_id, file_id = "", 0, data
 
-    # Check force subscription for start command every time
-    check_msg = await message.reply_text("🔄 <b>ᴄʜᴇᴄᴋɪɴɢ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ...</b>", parse_mode=enums.ParseMode.HTML)
+    if not await db.has_premium_access(message.from_user.id): 
+        try:
+            btn = []
+            chat = int(data.split("_", 2)[1])
+            settings      = await get_settings(chat)
+            fsub_channels = list(dict.fromkeys((settings.get('fsub', []) if settings else [])+ AUTH_CHANNELS)) 
 
-    btn = []
-    
-    # Log file request force sub check
-    await client.send_message(LOG_CHANNEL, f"#File_Request_Force_Check\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n📁 File ID: {file_id}\n👥 Group ID: {grp_id}")
-    
-    # Always check force subscription for every user, including premium users
-    if AUTH_CHANNELS:
-        await client.send_message(LOG_CHANNEL, f"#File_Auth_Check\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n📋 Checking AUTH_CHANNELS: {AUTH_CHANNELS}")
-        auth_btn = await is_subscribed(client, message.from_user.id, AUTH_CHANNELS)
-        if auth_btn:
-            btn.extend(auth_btn)
-            await client.send_message(LOG_CHANNEL, f"#File_Auth_Failed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n❌ Not subscribed to AUTH_CHANNELS")
-        else:
-            await client.send_message(LOG_CHANNEL, f"#File_Auth_Passed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n✅ Subscribed to AUTH_CHANNELS")
-            
-    if AUTH_REQ_CHANNELS:
-        await client.send_message(LOG_CHANNEL, f"#File_Auth_Req_Check\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n📋 Checking AUTH_REQ_CHANNELS: {AUTH_REQ_CHANNELS}")
-        auth_req_btn = await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
-        if auth_req_btn:
-            btn.extend(auth_req_btn)
-            await client.send_message(LOG_CHANNEL, f"#File_Auth_Req_Failed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n❌ Not subscribed to AUTH_REQ_CHANNELS")
-        else:
-            await client.send_message(LOG_CHANNEL, f"#File_Auth_Req_Passed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n✅ Subscribed to AUTH_REQ_CHANNELS")
+            if fsub_channels:
+                btn += await is_subscribed(client, message.from_user.id, fsub_channels)
+            if AUTH_REQ_CHANNELS:
+                btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
+            if btn:
+                if len(message.command) > 1 and "_" in message.command[1]:
+                    kk, file_id = message.command[1].split("_", 1)
+                    btn.append([
+                        InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", callback_data=f"checksub#{kk}#{file_id}")
+                    ])
+                    reply_markup = InlineKeyboardMarkup(btn)
+                photo = random.choice(FSUB_PICS) if FSUB_PICS else "https://graph.org/file/7478ff3eac37f4329c3d8.jpg"
+                caption = (
+                    f"👋 ʜᴇʟʟᴏ {message.from_user.mention}\n\n"
+                    "🛑 ʏᴏᴜ ᴍᴜsᴛ ᴊᴏɪɴ ᴛʜᴇ ʀᴇǫᴜɪʀᴇᴅ ᴄʜᴀɴɴᴇʟs ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ.\n"
+                    "👉 ᴊᴏɪɴ ᴀʟʟ ᴛʜᴇ ʙᴇʟᴏᴡ ᴄʜᴀɴɴᴇʟs ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ."
+                )
+                await message.reply_photo(
+                    photo=photo,
+                    caption=caption,
+                    reply_markup=reply_markup,
+                    parse_mode=enums.ParseMode.HTML
+                )
+                return
 
-    await check_msg.delete()
-
-    # Show subscription message if user is not subscribed (premium doesn't bypass force sub)
-    if btn:
-        btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data=f"start_refresh_{grp_id}_{file_id}")])
-        await client.send_message(LOG_CHANNEL, f"#File_Request_Blocked\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n🚫 File request blocked due to force subscription")
-        await message.reply_text(
-            text="<b>🚫 ᴘʟᴇᴀꜱᴇ ꜱᴜʙꜱᴄʀɪʙᴇ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ.</b>",
-            reply_markup=InlineKeyboardMarkup(btn),
-            parse_mode=enums.ParseMode.HTML
-        )
-        return
-    else:
-        await client.send_message(LOG_CHANNEL, f"#File_Request_Allowed\n\n👤 User: {message.from_user.mention}\n🆔 ID: {message.from_user.id}\n✅ File request allowed - force subscription passed")
-
-    buttons = [
-                    [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
-                    [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
-                    [InlineKeyboardButton('📫 OTT RELEASED MOVIES 📫', url='https://t.me/+rJUcsBEWwYg3YzI1'), 
-                     InlineKeyboardButton('📫 OTT RELEASED KANNADA MOVIES 📫', url='https://t.me/+NWXPZGgS1zQ3YWE1')],
-                    [InlineKeyboardButton('🔥 ADULT CHANNEL 🔥', url='https://t.me/+01z_dRj5wmgyNWE1')]
-                ]
+        except Exception as e:
+            await log_error(client, f"❗️ Force Sub Error:\n\n{repr(e)}")
+            logger.error(f"❗️ Force Sub Error:\n\n{repr(e)}")
 
 
     user_id = m.from_user.id
@@ -333,7 +315,7 @@ async def start(client, message):
         try:
             files = temp.GETALL.get(file_id)
             if not files:
-                return await message.reply('<b><i>ɴᴏ ꜱᴜᴄʜ ꜰɪʟᴇ ᴇxɪꜱᴛꜱ !</i></b>')
+                return await message.reply('<b><i>ɴᴏ ꜱᴜᴄʜ ꜰɪʟᴇ ᴇxɪꜱᴛꜱ !</b></i>')
             filesarr = []
             for file in files:
                 file_id = file.file_id
@@ -352,35 +334,29 @@ async def start(client, message):
                         f_caption = f_caption
                 if f_caption is None:
                     f_caption = f"{clean_filename(files1.file_name)}"
-
+                
                 if STREAM_MODE and not PREMIUM_STREAM_MODE:
-
+                    
                     btn = [
                         [InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'generate_stream_link:{file_id}')],
                         [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]  # Keep this line unchanged  
                     ]
                 elif STREAM_MODE and PREMIUM_STREAM_MODE:
-
+                    
                     if not await db.has_premium_access(message.from_user.id):
-
+                        
                         btn = [
                             [InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'prestream')],
                             [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]  # Keep this line unchanged  
                         ]
                     else:
-
+                        
                         btn = [
                             [InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'generate_stream_link:{file_id}')],
                             [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]  # Keep this line unchanged  
                         ]
                 else:
-                    btn = [
-                        [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
-                        [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
-                        [InlineKeyboardButton('📫 OTT RELEASED MOVIES 📫', url='https://t.me/+rJUcsBEWwYg3YzI1'), 
-                         InlineKeyboardButton('📫 OTT RELEASED KANNADA MOVIES 📫', url='https://t.me/+NWXPZGgS1zQ3YWE1')],
-                        [InlineKeyboardButton('🔥 ADULT CHANNEL 🔥', url='https://t.me/+01z_dRj5wmgyNWE1')]
-                    ]
+                    btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
                 msg = await client.send_cached_media(
                     chat_id=message.from_user.id,
                     file_id=file_id,
@@ -389,11 +365,11 @@ async def start(client, message):
                     reply_markup=InlineKeyboardMarkup(btn)
                 )
                 filesarr.append(msg)
-            k = await client.send_message(chat_id=message.from_user.id, text=f"<strong>📤 This File Will Be Delete In : <u><code>{get_time(DELETE_TIME)}</code></u>⏰\n\n<u>Join This Group And Ask Any Movies</u>\n\nGroup 1\nhttps://t.me/+dd9gZo9nlg9mNjQ1\nGroup 2\nhttps://t.me/+dau0zdsJPhI2OWNl</strong>")
+            k = await client.send_message(chat_id=message.from_user.id, text=f"<b><u>❗️❗️❗️IMPORTANT❗️️❗️❗️</u></b>\n\nᴛʜɪꜱ ᴍᴏᴠɪᴇ ꜰɪʟᴇ/ᴠɪᴅᴇᴏ ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ɪɴ <b><u><code>{get_time(DELETE_TIME)}</code></u> 🫥 <i></b>(ᴅᴜᴇ ᴛᴏ ᴄᴏᴘʏʀɪɢʜᴛ ɪꜱꜱᴜᴇꜱ)</i>.\n\n<b><i>ᴘʟᴇᴀꜱᴇ ꜰᴏʀᴡᴀʀᴅ ᴛʜɪꜱ ꜰɪʟᴇ ᴛᴏ ꜱᴏᴍᴇᴡʜᴇʀᴇ ᴇʟꜱᴇ ᴀɴᴅ ꜱᴛᴀʀᴛ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴛʜᴇʀᴇ</i></b>")
             await asyncio.sleep(DELETE_TIME)
             for x in filesarr:
                 await x.delete()
-            await k.edit_text("<b>ʏᴏᴜʀ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ ɪꜱ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ !!\n\n<u>Join This Group And Ask Any Movies</u>\n\nGroup 1\nhttps://t.me/+dd9gZo9nlg9mNjQ1\nGroup 2\nhttps://t.me/+dau0zdsJPhI2OWNl</b>")
+            await k.edit_text("<b>ʏᴏᴜʀ ᴀʟʟ ᴠɪᴅᴇᴏꜱ/ꜰɪʟᴇꜱ ᴀʀᴇ ᴅᴇʟᴇᴛᴇᴅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ !\nᴋɪɴᴅʟʏ ꜱᴇᴀʀᴄʜ ᴀɢᴀɪɴ</b>")
             return
         except Exception as e:
             logger.exception(e)
@@ -422,14 +398,8 @@ async def start(client, message):
                         [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]  # Keep this line unchanged  
                     ]
             else:
-
-                btn = [
-                        [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
-                        [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
-                        [InlineKeyboardButton('📫 OTT RELEASED MOVIES 📫', url='https://t.me/+rJUcsBEWwYg3YzI1'), 
-                         InlineKeyboardButton('📫 OTT RELEASED KANNADA MOVIES 📫', url='https://t.me/+NWXPZGgS1zQ3YWE1')],
-                        [InlineKeyboardButton('🔥 ADULT CHANNEL 🔥', url='https://t.me/+01z_dRj5wmgyNWE1')]
-                    ] 
+            
+                btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]] 
             msg = await client.send_cached_media(
                 chat_id=message.from_user.id,
                 file_id=file_id,
@@ -453,18 +423,21 @@ async def start(client, message):
                 reply_markup=InlineKeyboardMarkup(btn)
             )
             k = await msg.reply(
-                f"<strong>📤 This File Will Be Delete In : <u><code>{get_time(DELETE_TIME)}</code></u>⏰\n\n<u>Join This Group And Ask Any Movies</u>\n\nGroup 1\nhttps://t.me/+dd9gZo9nlg9mNjQ1\nGroup 2\nhttps://t.me/+dau0zdsJPhI2OWNl</strong>",
+                f"<b><u>❗️❗️❗️IMPORTANT❗️️❗️❗️</u></b>\n\n"
+                f"ᴛʜɪꜱ ᴍᴏᴠɪᴇ ꜰɪʟᴇ/ᴠɪᴅᴇᴏ ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ɪɴ <b><u><code>{get_time(DELETE_TIME)}</code></u> 🫥 <i></b>"
+                "(ᴅᴜᴇ ᴛᴏ ᴄᴏᴘʏʀɪɢʜᴛ ɪꜱꜱᴜᴇꜱ)</i>.\n\n"
+                "<b><i>ᴘʟᴇᴀꜱᴇ ꜰᴏʀᴡᴀʀᴅ ᴛʜɪꜱ ꜰɪʟᴇ ᴛᴏ ꜱᴏᴍᴇᴡʜᴇʀᴇ ᴇʟꜱᴇ ᴀɴᴅ ꜱᴛᴀʀᴛ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴛʜᴇʀᴇ</i></b>",
                 quote=True
             )
             await asyncio.sleep(DELETE_TIME)
             await msg.delete()
-            await k.edit_text("<b>ʏᴏᴜʀ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ ɪꜱ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ !!\n\n<u>Join This Group And Ask Any Movies</u>\n\nGroup 1\nhttps://t.me/+dd9gZo9nlg9mNjQ1\nGroup 2\nhttps://t.me/+dau0zdsJPhI2OWNl</b>")
+            await k.edit_text("<b>ʏᴏᴜʀ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ ɪꜱ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ !!</b>")
             return
         except Exception as e:
             logger.exception(e)
             pass
         return await message.reply('ɴᴏ ꜱᴜᴄʜ ꜰɪʟᴇ ᴇxɪꜱᴛꜱ !')
-
+    
     files = files_[0]
     title = clean_filename(files.file_name)
     size = get_size(files.file_size)
@@ -480,7 +453,7 @@ async def start(client, message):
 
     if f_caption is None:
         f_caption = clean_filename(files.file_name)
-
+    
     if STREAM_MODE and not PREMIUM_STREAM_MODE:
         btn = [
             [InlineKeyboardButton('🚀 ꜰᴀꜱᴛ ᴅᴏᴡɴʟᴏᴀᴅ / ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ 🖥️', callback_data=f'generate_stream_link:{file_id}')],
@@ -498,13 +471,7 @@ async def start(client, message):
                 [InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]  # Keep this line unchanged  
             ]
     else:
-        btn = [
-                        [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
-                        [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
-                        [InlineKeyboardButton('📫 OTT RELEASED MOVIES 📫', url='https://t.me/+rJUcsBEWwYg3YzI1'), 
-                         InlineKeyboardButton('📫 OTT RELEASED KANNADA MOVIES 📫', url='https://t.me/+NWXPZGgS1zQ3YWE1')],
-                        [InlineKeyboardButton('🔥 ADULT CHANNEL 🔥', url='https://t.me/+01z_dRj5wmgyNWE1')]
-                    ]
+        btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
     msg = await client.send_cached_media(
         chat_id=message.from_user.id,
         file_id=file_id,
@@ -513,12 +480,15 @@ async def start(client, message):
         reply_markup=InlineKeyboardMarkup(btn)
     )
     k = await msg.reply(
-        f"<strong>📤 This File Will Be Delete In : <u><code>{get_time(DELETE_TIME)}</code></u>⏰\n\n<u>Join This Group And Ask Any Movies</u>\n\nGroup 1\nhttps://t.me/+dd9gZo9nlg9mNjQ1\nGroup 2\nhttps://t.me/+dau0zdsJPhI2OWNl</strong>",
+        f"<b><u>❗️❗️❗️IMPORTANT❗️️❗️❗️</u></b>\n\n"
+        f"ᴛʜɪꜱ ᴍᴏᴠɪᴇ ꜰɪʟᴇ/ᴠɪᴅᴇᴏ ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ɪɴ <b><u><code>{get_time(DELETE_TIME)}</code></u> 🫥 <i></b>"
+        "(ᴅᴜᴇ ᴛᴏ ᴄᴏᴘʏʀɪɢʜᴛ ɪꜱꜱᴜᴇꜱ)</i>.\n\n"
+        "<b><i>ᴘʟᴇᴀꜱᴇ ꜰᴏʀᴡᴀʀᴅ ᴛʜɪꜱ ꜰɪʟᴇ ᴛᴏ ꜱᴏᴍᴇᴡʜᴇʀᴇ ᴇʟꜱᴇ ᴀɴᴅ ꜱᴛᴀʀᴛ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴛʜᴇʀᴇ</i></b>",
         quote=True
     )     
     await asyncio.sleep(DELETE_TIME)
     await msg.delete()
-    await k.edit_text("<b>ʏᴏᴜʀ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ ɪꜱ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ !!\n\n<u>Join This Group And Ask Any Movies</u>\n\nGroup 1\nhttps://t.me/+dd9gZo9nlg9mNjQ1\nGroup 2\nhttps://t.me/+dau0zdsJPhI2OWNl</b>")
+    await k.edit_text("<b>ʏᴏᴜʀ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ ɪꜱ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ !!</b>")
     return
 
 @Client.on_message(filters.command('logs') & filters.user(ADMINS))
@@ -546,7 +516,7 @@ async def delete(bot, message):
     else:
         await msg.edit('Tʜɪs ɪs ɴᴏᴛ sᴜᴘᴘᴏʀᴛᴇᴅ ғɪʟᴇ ғᴏʀᴍᴀᴛ')
         return
-
+    
     file_id, file_ref = unpack_new_file_id(media.file_id)
     if await Media.count_documents({'file_id': file_id}):
         result = await Media.collection.delete_one({
@@ -574,7 +544,7 @@ async def delete(bot, message):
                 'mime_type': media.mime_type
             })
             if result.deleted_count:
-                await msg.edit('Fɪʟᴇ ɪs sᴜᴄᴄᴇssғᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ ғʀᴏᴍ ᴅᴀᴛᴀʙᴀsᴇ ✅')
+                await msg.edit('Fɪʟᴇ ɪs sᴜᴄᴄᴇssғᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ ғʀᴏᴍ ᴅᴀᴛᴀʙᴀsᴇ')
             else:
                 result = await Media.collection.delete_many({
                     'file_name': media.file_name,
@@ -598,7 +568,7 @@ async def delete(bot, message):
 @Client.on_message(filters.command('deleteall') & filters.user(ADMINS))
 async def delete_all_index(bot, message):
     await message.reply_text(
-        'ᴛʜɪs ᴡɪʟʟ ᴅᴇʟᴇᴛᴇ ᴀʟʟ ʏᴏᴜʀ ɪɴᴅᴇxᴇᴅ ꜰɪʟᴇꜱ !\nᴅᴏ ʏᴏᴜ ꜱᴛɪʟʟ ᴡᴀɴᴛ ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ ?',
+        'ᴛʜɪꜱ ᴡɪʟʟ ᴅᴇʟᴇᴛᴇ ᴀʟʟ ʏᴏᴜʀ ɪɴᴅᴇxᴇᴅ ꜰɪʟᴇꜱ !\nᴅᴏ ʏᴏᴜ ꜱᴛɪʟʟ ᴡᴀɴᴛ ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ ?',
         reply_markup=InlineKeyboardMarkup(
             [
                 [
@@ -657,7 +627,7 @@ async def settings(client, message):
                     "ᴜꜱᴇ /reload ɪɴ ᴛʜᴀᴛ ɢʀᴏᴜᴘ ᴀɴᴅ ɪᴛ ᴡɪʟʟ ᴀᴘᴘᴇᴀʀ ʜᴇʀᴇ.",
                     reply_markup=InlineKeyboardMarkup(group_list)
                 )
-
+        
 @Client.on_message(filters.command('reload'))
 async def connect_group(client, message):
     user_id = message.from_user.id
@@ -678,17 +648,17 @@ async def connect_group(client, message):
             await message.reply_text(f"Lɪɴᴋᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ ✅ {chat.title} ᴛᴏ PM.")
         except:
             await message.reply_text("Invalid group ID or error occurred.")
-
+            
 @Client.on_message(filters.command('set_template'))
 async def save_template(client, message):
     sts = await message.reply("ᴄʜᴇᴄᴋɪɴɢ ᴛᴇᴍᴘʟᴀᴛᴇ...")
     user_id = message.from_user.id if message.from_user else None
     if not user_id:
         return await message.reply("ʏᴏᴜ'ʀᴇ ᴀɴᴏɴʏᴍᴏᴜꜱ ᴀᴅᴍɪɴ.")
-
+    
     if message.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
         return await sts.edit("⚠️ ᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ɪɴ ᴀ ɢʀᴏᴜᴘ ᴄʜᴀᴛ.")
-
+    
     group_id = message.chat.id
     title = message.chat.title
     if not await is_check_admin(client, group_id, user_id):
@@ -696,7 +666,7 @@ async def save_template(client, message):
         return
     if len(message.command) < 2:
         return await sts.edit("⚠️ ɴᴏ ᴛᴇᴍᴘʟᴀᴛᴇ ᴘʀᴏᴠɪᴅᴇᴅ!")
-
+    
     template = message.text.split(" ", 1)[1]
     await save_group_settings(group_id, 'template', template)
     await sts.edit(
@@ -822,7 +792,7 @@ async def requests(bot, message):
                 InlineKeyboardButton('ᴠɪᴇᴡ ʀᴇǫᴜᴇꜱᴛ', url=f"{reported_post.link}")
               ]]
         await message.reply_text("<b>ʏᴏᴜʀ ʀᴇǫᴜᴇꜱᴛ ʜᴀꜱ ʙᴇᴇɴ ᴀᴅᴅᴇᴅ! ᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ ꜰᴏʀ ꜱᴏᴍᴇ ᴛɪᴍᴇ.\n\nᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ ꜰɪʀꜱᴛ & ᴠɪᴇᴡ ʀᴇǫᴜᴇꜱᴛ.</b>", reply_markup=InlineKeyboardMarkup(btn))
-
+    
 @Client.on_message(filters.command("send") & filters.user(ADMINS))
 async def send_msg(bot, message):
     if message.reply_to_message:
@@ -843,11 +813,11 @@ async def send_msg(bot, message):
             if success:
                 await message.reply_text(f"<b>ʏᴏᴜʀ ᴍᴇꜱꜱᴀɢᴇ ʜᴀꜱ ʙᴇᴇɴ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ꜱᴇɴᴛ ᴛᴏ {user.mention}.</b>")
             else:
-                await message.reply_text("<b>ᴛʜɪs ᴜꜱᴇʀ ᴅɪᴅɴ'ᴛ ꜱᴛᴀʀᴛᴇᴅ ᴛʜɪs ʙᴏᴛ ʏᴇᴛ !</b>")
+                await message.reply_text("<b>ᴛʜɪꜱ ᴜꜱᴇʀ ᴅɪᴅɴ'ᴛ ꜱᴛᴀʀᴛᴇᴅ ᴛʜɪꜱ ʙᴏᴛ ʏᴇᴛ !</b>")
         except Exception as e:
             await message.reply_text(f"<b>Error: {e}</b>")
     else:
-        await message.reply_text("<b>ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴀs ᴀ ʀᴇᴘʟʏ ᴛᴏ ᴀɴʏ ᴍᴇꜱꜱᴀɢᴇ ᴜꜱɪɴɢ ᴛʜᴇ ᴛᴀʀɢᴇᴛ ᴄʜᴀᴛ ɪᴅ. ꜰᴏʀ ᴇɢ:  /send ᴜꜱᴇʀɪᴅ</b>")
+        await message.reply_text("<b>ᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ᴀꜱ ᴀ ʀᴇᴘʟʏ ᴛᴏ ᴀɴʏ ᴍᴇꜱꜱᴀɢᴇ ᴜꜱɪɴɢ ᴛʜᴇ ᴛᴀʀɢᴇᴛ ᴄʜᴀᴛ ɪᴅ. ꜰᴏʀ ᴇɢ:  /send ᴜꜱᴇʀɪᴅ</b>")
 
 @Client.on_message(filters.command("deletefiles") & filters.user(ADMINS))
 async def deletemultiplefiles(bot, message):
@@ -865,7 +835,7 @@ async def deletemultiplefiles(bot, message):
     await k.delete()
     if total == 0:
         return await message.reply_text(f"<b>Hey {message.from_user.mention}, No files found for your query {keyword}.</b>")
-
+        
     btn = [[
        InlineKeyboardButton("⚠️ Yes, Continue ! ⚠️", callback_data=f"killfilesdq#{keyword}")
        ],[
@@ -882,7 +852,7 @@ async def deletemultiplefiles(bot, message):
 async def topsearch_callback(client, callback_query):
     def is_alphanumeric(string):
         return bool(re.match('^[a-zA-Z0-9 ]*$', string))
-
+    
     limit = 20  
     top_messages = await mdb.get_top_messages(limit)
     seen_messages = set()
@@ -997,89 +967,6 @@ async def set_pm_search(client, message):
         response_text = (
             "<b> ᴘᴍ ꜱᴇᴀʀᴄʜ ᴇɴᴀʙʟᴇᴅ ✅</b>" if enable_status 
             else "<b> ᴘᴍ ꜱᴇᴀʀᴄʜ ᴅɪꜱᴀʙʟᴇᴅ ❌</b>"
-
-@Client.on_callback_query(filters.regex(r"^start_refresh"))
-async def refresh_start_callback(client, callback_query):
-    user_id = callback_query.from_user.id
-
-    # Parse callback data to get grp_id and file_id if available
-    data_parts = callback_query.data.split("_")
-    grp_id = data_parts[2] if len(data_parts) > 2 else "0"
-    file_id = data_parts[3] if len(data_parts) > 3 else ""
-
-    # Log refresh attempt
-    await client.send_message(LOG_CHANNEL, f"#Refresh_Force_Sub\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n🔄 Refreshing subscription check...")
-
-    # Check force subscription again
-    btn = []
-    if AUTH_CHANNELS:
-        await client.send_message(LOG_CHANNEL, f"#Refresh_Auth_Check\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n📋 Re-checking AUTH_CHANNELS: {AUTH_CHANNELS}")
-        auth_btn = await is_subscribed(client, user_id, AUTH_CHANNELS)
-        if auth_btn:
-            btn.extend(auth_btn)
-            await client.send_message(LOG_CHANNEL, f"#Refresh_Auth_Failed\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n❌ Still not subscribed to AUTH_CHANNELS")
-        else:
-            await client.send_message(LOG_CHANNEL, f"#Refresh_Auth_Passed\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n✅ Now subscribed to AUTH_CHANNELS")
-            
-    if AUTH_REQ_CHANNELS:
-        await client.send_message(LOG_CHANNEL, f"#Refresh_Auth_Req_Check\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n📋 Re-checking AUTH_REQ_CHANNELS: {AUTH_REQ_CHANNELS}")
-        auth_req_btn = await is_req_subscribed(client, user_id, AUTH_REQ_CHANNELS)
-        if auth_req_btn:
-            btn.extend(auth_req_btn)
-            await client.send_message(LOG_CHANNEL, f"#Refresh_Auth_Req_Failed\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n❌ Still not subscribed to AUTH_REQ_CHANNELS")
-        else:
-            await client.send_message(LOG_CHANNEL, f"#Refresh_Auth_Req_Passed\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n✅ Now subscribed to AUTH_REQ_CHANNELS")
-
-    # If still not subscribed (force sub applies to all users)
-    if btn:
-        btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data=f"start_refresh_{grp_id}_{file_id}")])
-        await client.send_message(LOG_CHANNEL, f"#Refresh_Still_Blocked\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n🚫 Still blocked after refresh - not subscribed")
-        await callback_query.answer("🚫 ꜱᴛɪʟʟ ɴᴏᴛ ꜱᴜʙꜱᴄʀɪʙᴇᴅ!", show_alert=True)
-        await callback_query.message.edit_text(
-            text="<b>🚫 ᴘʟᴇᴀꜱᴇ ꜱᴜʙꜱᴄʀɪʙᴇ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ.</b>",
-            reply_markup=InlineKeyboardMarkup(btn),
-            parse_mode=enums.ParseMode.HTML
-        )
-        return
-
-    # User is now subscribed, proceed with the file request
-    await client.send_message(LOG_CHANNEL, f"#Refresh_Success\n\n👤 User: {callback_query.from_user.mention}\n🆔 ID: {user_id}\n✅ Subscription verified after refresh")
-    await callback_query.answer("✅ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ ᴠᴇʀɪꜰɪᴇᴅ!", show_alert=True)
-    await callback_query.message.delete()
-
-    # If we have file_id, redirect to file
-    if file_id and grp_id != "0":
-        await callback_query.message.reply_text(
-            f"✅ ᴠᴇʀɪꜰɪᴇᴅ! ᴄʟɪᴄᴋ ʜᴇʀᴇ ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇ: /start file_{grp_id}_{file_id}"
-        )
-    else:
-        # Send start message if no specific file requested
-        buttons = [
-            [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
-            [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
-            [InlineKeyboardButton('📫 OTT RELEASED MOVIES 📫', url='https://t.me/+rJUcsBEWwYg3YzI1'), 
-             InlineKeyboardButton('📫 OTT RELEASED KANNADA MOVIES 📫', url='https://t.me/+NWXPZGgS1zQ3YWE1')],
-            [InlineKeyboardButton('🔥 ADULT CHANNEL 🔥', url='https://t.me/+01z_dRj5wmgyNWE1')]
-        ]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        current_time = datetime.now(pytz.timezone(TIMEZONE))
-        curr_time = current_time.hour        
-        if curr_time < 12:
-            gtxt = "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌞" 
-        elif curr_time < 17:
-            gtxt = "ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ 🌓" 
-        elif curr_time < 21:
-            gtxt = "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌘"
-        else:
-            gtxt = "ɢᴏᴏᴅ ɴɪɢʜᴛ 🌑"
-
-        await callback_query.message.reply_photo(
-            photo=random.choice(PICS),
-            caption=script.START_TXT.format(callback_query.from_user.mention, gtxt, temp.U_NAME, temp.B_NAME),
-            reply_markup=reply_markup,
-            parse_mode=enums.ParseMode.HTML
-        )
-
         )
         await message.reply_text(response_text)
     except Exception as e:
@@ -1174,7 +1061,7 @@ async def set_tutorial(client, message: Message):
         tutorial_link = message.text.split(" ", 1)[1]
     except IndexError:
         return await message.reply_text(
-            f"<b>ᴄᴏᴍᴍᴀɴᴅ ɪɴᴄᴏᴍᴘʟᴇᴛᴇ !!\n\nᴜꜱᴇ ʟɪᴋᴇ ᴛʜɪs -</b>\n\n"
+            f"<b>ᴄᴏᴍᴍᴀɴᴅ ɪɴᴄᴏᴍᴘʟᴇᴛᴇ !!\n\nᴜꜱᴇ ʟɪᴋᴇ ᴛʜɪꜱ -</b>\n\n"
             f"<code>/{message.command[0]} https://t.me/dreamxbotz</code>"
         )
     if message.command[0] == "set_tutorial":
@@ -1258,7 +1145,7 @@ async def set_log(client, message):
     if not await is_check_admin(client, grp_id, message.from_user.id):
         return await message.reply_text(script.NT_ADMIN_ALRT_TXT)
     if len(message.text.split()) == 1:
-        await message.reply("<b>ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ʟɪᴋᴇ ᴛʜɪs - \n\n`/set_log_channel -100******`</b>")
+        await message.reply("<b>ᴜꜱᴇ ᴛʜɪꜱ ᴄᴏᴍᴍᴀɴᴅ ʟɪᴋᴇ ᴛʜɪꜱ - \n\n`/set_log_channel -100******`</b>")
         return
     sts = await message.reply("<b>♻️ ᴄʜᴇᴄᴋɪɴɢ...</b>")
     await asyncio.sleep(1.2)
@@ -1279,7 +1166,7 @@ async def set_log(client, message):
     except Exception as e:
         return await message.reply_text(f'<b><u>😐 ᴍᴀᴋᴇ sᴜʀᴇ ᴛʜɪs ʙᴏᴛ ᴀᴅᴍɪɴ ɪɴ ᴛʜᴀᴛ ᴄʜᴀɴɴᴇʟ...</u>\n\n💔 ᴇʀʀᴏʀ - <code>{e}</code></b>')
     await save_group_settings(grp_id, 'log', log)
-    await message.reply_text(f"<b>✅ sᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ sᴇᴛ ʏᴏᴜʀ ʟᴏɢ ᴄʜᴀɴɴᴇʟ ꜰᴏʀ {title}\n\nɪᴅ - `{log}`</b>", disable_web_page_preview=True)
+    await message.reply_text(f"<b>✅ sᴜᴄᴄᴇssꜰᴜʟʟʏ sᴇᴛ ʏᴏᴜʀ ʟᴏɢ ᴄʜᴀɴɴᴇʟ ꜰᴏʀ {title}\n\nɪᴅ - `{log}`</b>", disable_web_page_preview=True)
     user_id = message.from_user.id
     user_info = f"@{message.from_user.username}" if message.from_user.username else f"{message.from_user.mention}"
     link = (await client.get_chat(message.chat.id)).invite_link
@@ -1406,70 +1293,6 @@ async def verify(bot, message):
     except Exception as e:
         print(f"Error: {e}")
         await message.reply_text(f"Error: {e}")
-
-@Client.on_callback_query(filters.regex(r"^start_refresh"))
-async def refresh_start_callback(client, callback_query):
-    user_id = callback_query.from_user.id
-
-    # Parse callback data to get grp_id and file_id if available
-    data_parts = callback_query.data.split("_")
-    grp_id = data_parts[2] if len(data_parts) > 2 else "0"
-    file_id = data_parts[3] if len(data_parts) > 3 else ""
-
-    # Check force subscription again
-    btn = []
-    if AUTH_CHANNELS:
-        btn += await is_subscribed(client, user_id, AUTH_CHANNELS)
-    if AUTH_REQ_CHANNELS:
-        btn += await is_req_subscribed(client, user_id, AUTH_REQ_CHANNELS)
-
-    # If still not subscribed (force sub applies to all users)
-    if btn:
-        btn.append([InlineKeyboardButton("♻️ ʀᴇꜰʀᴇꜱʜ ♻️", callback_data=f"start_refresh_{grp_id}_{file_id}")])
-        await callback_query.answer("🚫 ꜱᴛɪʟʟ ɴᴏᴛ ꜱᴜʙꜱᴄʀɪʙᴇᴅ!", show_alert=True)
-        await callback_query.message.edit_text(
-            text="<b>🚫 ᴘʟᴇᴀꜱᴇ ꜱᴜʙꜱᴄʀɪʙᴇ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ.</b>",
-            reply_markup=InlineKeyboardMarkup(btn),
-            parse_mode=enums.ParseMode.HTML
-        )
-        return
-
-    # User is now subscribed, proceed with the file request
-    await callback_query.answer("✅ ꜱᴜʙꜱᴄʀɪᴘᴛɪᴏɴ ᴠᴇʀɪꜰɪᴇᴅ!", show_alert=True)
-    await callback_query.message.delete()
-
-    # If we have file_id, redirect to file
-    if file_id and grp_id != "0":
-        await callback_query.message.reply_text(
-            f"✅ ᴠᴇʀɪꜰɪᴇᴅ! ᴄʟɪᴄᴋ ʜᴇʀᴇ ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇ: /start file_{grp_id}_{file_id}"
-        )
-    else:
-        # Send start message if no specific file requested
-        buttons = [
-            [InlineKeyboardButton('🛎 MAIN CHANNEL 🛎', url=UPDATE_CHNL_LNK)],
-            [InlineKeyboardButton('🖥️ NEW RELEASED MOVIES 🖥️', url='https://t.me/+Fi9MNuaisWwxZDI1')],
-            [InlineKeyboardButton('📫 OTT RELEASED MOVIES 📫', url='https://t.me/+rJUcsBEWwYg3YzI1'), 
-             InlineKeyboardButton('📫 OTT RELEASED KANNADA MOVIES 📫', url='https://t.me/+NWXPZGgS1zQ3YWE1')],
-            [InlineKeyboardButton('🔥 ADULT CHANNEL 🔥', url='https://t.me/+01z_dRj5wmgyNWE1')]
-        ]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        current_time = datetime.now(pytz.timezone(TIMEZONE))
-        curr_time = current_time.hour        
-        if curr_time < 12:
-            gtxt = "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌞" 
-        elif curr_time < 17:
-            gtxt = "ɢᴏᴏᴅ ᴀғᴛᴇʀɴᴏᴏɴ 🌓" 
-        elif curr_time < 21:
-            gtxt = "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌘"
-        else:
-            gtxt = "ɢᴏᴏᴅ ɴɪɢʜᴛ 🌑"
-
-        await callback_query.message.reply_photo(
-            photo=random.choice(PICS),
-            caption=script.START_TXT.format(callback_query.from_user.mention, gtxt, temp.U_NAME, temp.B_NAME),
-            reply_markup=reply_markup,
-            parse_mode=enums.ParseMode.HTML
-        )
 
 @Client.on_message(filters.command('set_fsub'))
 async def set_fsub(client, message):
